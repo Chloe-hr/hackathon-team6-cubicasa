@@ -33,8 +33,6 @@ pip install -r requirements.txt
 
 The notebook saves the figures in `figures/`, what the server needs in `model_app/` and everything for Hugging Face in `models/`.
 
-`notebook/cubicasa_autoencoder_first_try.ipynb` is our first try, kept with its outputs. It trained with MSE: the codes of 8 and 32 collapsed to a blank page and the code of 16 reached a test MSE of 0.0185. That's why the main notebook trains with BCE. It doesn't need to be run.
-
 ## Setups compared
 
 Same official split, same seed (42), 20 epochs, batches of 64, Adam with learning rate 0.001. Trained with binary cross-entropy and scored with MSE.
