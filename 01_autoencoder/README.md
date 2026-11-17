@@ -118,3 +118,7 @@ The model is on [Hugging Face](https://huggingface.co/iaac-maai/hackathon-team6-
 ## Slides
 
 The three slides: [`slides/team6_monday.pdf`](slides/team6_monday.pdf).
+
+## Internal-layout v3 experiment
+
+[`notebook/internal_layout_v3.ipynb`](notebook/internal_layout_v3.ipynb) contains explained annotation inspection, 256 px room/wall/door masks, structural retrieval, synthetic checks and a human relevance-review workflow. Start with the synthetic checks, then point `DATASET_ROOT` to the extracted annotated CubiCasa5K dataset and official split files. Inspect overlays before enabling `RUN_COLLECTION`. Generated features and review CSVs live under the ignored `data/internal_layout_v3/` folder. No v3 neural model has been trained; uploaded drawings still need room/wall extraction. V2 remains the baseline.
