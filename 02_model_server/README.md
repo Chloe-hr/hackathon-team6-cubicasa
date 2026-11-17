@@ -22,8 +22,8 @@ It has two doors:
 
 | | |
 |---|---|
-| **Input** | one floor-plan image, PNG or JPEG, as a base64 text. A `data:image/png;base64,` prefix is allowed |
-| **Preprocessing** | the same as in training: greyscale, inverted so the walls are bright, padded to a square, 128 x 128 px; then cleaned: only the lines thinner than 5 px are kept, scaled by the plan's own lines and cut into black and white |
+| **Input** | one floor-plan image (PNG or JPEG) as a base64 text. A `data:image/png;base64,` prefix is allowed |
+| **Preprocessing** (on the server, the same as in training) | greyscale, inverted (walls bright), padded to a square, 128 x 128 px; then cleaned: only the lines thinner than 5 px are kept, scaled by the plan's own lines and cut into black and white |
 | **Output** | a JSON dictionary, see below |
 
 ```json
@@ -46,9 +46,9 @@ It has two doors:
 | `matches` | the five closest plans, the most similar first |
 | `id` | the plan's folder in CubiCasa5K |
 | `distance` | the distance between the two codes. Smaller = more similar. Our examples come from the collection, so each one finds itself first, at a much smaller distance than the others. Between two different plans it is usually 90 or more |
-| `image_png_base64` | the matched plan as drawn, as a 128 x 128 PNG with dark lines on white |
+| `image_png_base64` | the matched plan as drawn, as a 128 x 128 PNG (dark lines on white) |
 | `matches[].rooms_png_base64` | the matched plan's true rooms, from the annotations of CubiCasa5K, as a 128 x 128 PNG with one colour per room type |
-| `matches[].atlas_xy` | where that plan sits on the atlas of the 5,000 plans; x and y go from 0 to 1 |
+| `matches[].atlas_xy` | where that plan sits on the atlas of the 5,000 plans (x and y between 0 and 1) |
 | `atlas_xy` | where the uploaded plan lands on the atlas: the middle of its five matches. The app uses it to show the plan on the map |
 | `rooms_png_base64` | the rooms the model sees in the uploaded plan, in the same colours |
 | `room_colours` | the colour of each room type |
@@ -110,8 +110,8 @@ print([(m["id"], m["distance"]) for m in result["matches"]])
 
 | | |
 |---|---|
-| **Type** | encoder of setup C: 4 strided convolutions from 128 to 8 px and a code of 128 numbers. The decoder draws 11 room classes, the background and 10 room types, and the walls |
-| **Trained on** | CubiCasa5K, the 4,194 training plans of the official split that have usable annotations: the cleaned drawing as input, the room map and the walls from `model.svg` as the target. 20 epochs, cross-entropy for the rooms and binary cross-entropy for the walls |
+| **Type** | encoder of setup C: 4 strided convolutions (128 → 8 px) and a code of 128 numbers. The decoder draws 11 room classes, the background and 10 room types, and the walls |
+| **Trained on** | CubiCasa5K, the 4,194 training plans (official split) that have usable annotations: the cleaned drawing as input, the room map and the walls from `model.svg` as the target. 20 epochs, cross-entropy for the rooms and binary cross-entropy for the walls |
 | **Use** | similarity search by layout: the five smallest distances between codes |
 | **Test result** | for the 373 test plans with annotations, 34% of the five matches have the same number of bedrooms and 39% the same number of bathrooms. Version 2 gets 28% and 36%, random plans 21% and 29% |
 | **Rooms** | the predicted plan area overlaps the true one by 68%. It finds the living room and the bedrooms better than the small rooms: bathrooms and kitchens are mostly missed |

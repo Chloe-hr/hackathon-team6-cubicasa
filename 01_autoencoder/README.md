@@ -14,10 +14,10 @@ An architect uploads a floor plan and gets back the five most similar plans out 
 |---|---|
 | Name | CubiCasa5K |
 | Source | [Zenodo 2613548](https://zenodo.org/records/2613548) |
-| Size | 5,000 floor-plan images, official split 4,200 / 400 / 400, one 5.5 GB zip |
+| Size | 5,000 floor-plan images (official split: 4,200 train, 400 validation, 400 test), one 5.5 GB zip |
 | Licence | CC BY-NC-SA 4.0 |
 | Cite | Kalervo, A. et al. (2019), CubiCasa5K: A Dataset and an Improved Multi-Task Model for Floorplan Image Analysis, SCIA |
-| Preprocessing | the first floor of each home, `F1_scaled.png`; greyscale, inverted so the walls are bright, padded to a square, 128 x 128 px, pixels between 0 and 1 |
+| Preprocessing | the first floor of each home (`F1_scaled.png`), greyscale, inverted (walls bright), padded to a square, 128 x 128 px, pixels between 0 and 1 |
 
 ## How to run
 
@@ -84,7 +84,7 @@ Version 1 grouped plans by how they're drawn (bold, faint, grey fills) as much a
 
 ![Cleaning](figures/09_cleaning.png)
 
-| | v1 | v2 |
+| | v1 (as drawn) | v2 (cleaned) |
 |---|---|---|
 | Retrieval top-1 (test) | 69% | **86%** |
 | Faintest quarter of the plans | 28% | **77%** |
