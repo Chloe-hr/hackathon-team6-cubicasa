@@ -16,7 +16,7 @@ You upload a floor plan and get back the **five plans with the most similar layo
 
 It has two doors:
 - a **page for people** at the URL above: upload a plan or click an example, then "Find similar plans". The page shows the five plans as drawn and as room maps, your plan cleaned, and the rooms the model sees in it;
-- an **API for programs** at `/predict`, which the Cloudflare app will use on Wednesday.
+- an **API for programs** with two endpoints, `/predict` and `/embed`, explained below. The Cloudflare app will use it on Wednesday.
 
 ## Input and output of the API
 
@@ -53,6 +53,23 @@ It has two doors:
 | `rooms_png_base64` | the rooms the model sees in the uploaded plan, in the same colours |
 | `room_colours` | the colour of each room type |
 
+## The endpoints our product needs, and why
+
+Our product is a precedent search: an architect uploads a plan and gets back homes with a similar layout. Following the idea of the class slides, a search product does two things with the model: it adds plans to a catalog, once per plan, and it searches the catalog. For that we need two endpoints:
+
+| Endpoint | In | Out | Who calls it |
+|---|---|---|---|
+| `/predict` | one plan, as base64 | the 5 most similar plans out of the 5,000, with their drawings, room maps and places on the atlas, and the rooms the model sees in the upload | the Cloudflare app, at every search |
+| `/embed` | one plan, as base64 | its code: the 128 numbers of the v3 encoder | the app, when a new plan is added to the catalog; anyone who wants to compare plans on their own |
+
+Why `/predict` does the whole search on the server: the codes of the 5,000 plans, their drawings and their room maps are already loaded next to the model, so one call gives the app everything the page shows. The app doesn't have to load 5,000 codes for every search.
+
+Why we also need `/embed`: the model should not be the place where the catalog lives. With `/embed`, the app can store the code of every plan an architect uploads in the database, next to the plan, and compare codes there. The catalog can then grow with the users' own plans without training the model again. The code from `/embed` is exactly the one `/predict` compares: for our example plan 1191 both give a distance of 18.04 to the stored plan.
+
+What we don't need: an endpoint for the reconstruction error or for anomalies. Our use is the search, and the room map the page shows already comes with `/predict`.
+
+On Wednesday the app starts with `/predict`. Saving the codes of uploaded plans with `/embed` is the next step, if there is time.
+
 ## Call it from a program
 
 Every example below works from any computer. If the server is asleep, the first call waits about a minute.
@@ -68,6 +85,8 @@ image_b64 = base64.b64encode(open("examples/plan_high_quality_architectural_1191
 result = client.predict(image_b64, api_name="/predict")
 for match in result["matches"]:
     print(match["rank"], match["id"], match["distance"])
+
+code = client.predict(image_b64, api_name="/embed")["code"]   # the 128 numbers of the plan
 ```
 
 **Plain HTTP**, in two steps, which is what the Cloudflare app does:
@@ -85,7 +104,7 @@ result = json.loads(answer.split("event: complete\ndata: ", 1)[1].splitlines()[0
 print([(m["id"], m["distance"]) for m in result["matches"]])
 ```
 
-[`call_api.ipynb`](call_api.ipynb) does both calls on the online server and shows the five plans it gets back, as drawn and as rooms.
+[`call_api.ipynb`](call_api.ipynb) calls `/predict` in both ways and `/embed` on the online server, and shows the five plans it gets back, as drawn and as rooms.
 
 ## The model behind it
 
@@ -126,7 +145,7 @@ python app.py                    # then open http://127.0.0.1:7860
 
 | File | Contents |
 |---|---|
-| `app.py` | the preprocessing, the cleaning, the search, the room map, the page and the API |
+| `app.py` | the preprocessing, the cleaning, the search, the room map, the page and the two endpoints |
 | `floorplan_ae_v3_config.json` | image size, preprocessing, room classes and colours, and the test results of the model |
 | `examples/` | four test plans from the collection |
 | `requirements.txt`, `.python-version`, `render.yaml` | what Render needs to build and start the server |

@@ -106,12 +106,21 @@ def search_for_page(image):
 
 
 # ---- For programs: base64 image in, JSON out ---------------------------------
+def read_image(image_b64: str) -> Image.Image:
+    if "," in image_b64[:100]:          # a 'data:image/...;base64,' prefix is allowed
+        image_b64 = image_b64.split(",", 1)[1]
+    return Image.open(io.BytesIO(base64.b64decode(image_b64)))
+
+
+def embed(image_b64: str) -> dict:
+    """The code of one floor plan: the 128 numbers of the v3 encoder. Plans with close codes have a similar layout. Send a base64-encoded PNG or JPEG."""
+    code, _ = session.run(None, {"image": preprocess(read_image(image_b64))})
+    return {"code": [round(float(v), 5) for v in code[0]], "size": int(code.shape[1])}
+
+
 def predict(image_b64: str) -> dict:
     """Find the 5 floor plans with the most similar layout. Send a base64-encoded PNG or JPEG (a 'data:image/...;base64,' prefix is allowed)."""
-    if "," in image_b64[:100]:
-        image_b64 = image_b64.split(",", 1)[1]
-    image = Image.open(io.BytesIO(base64.b64decode(image_b64)))
-    nearest, distances, _, predicted_rooms = search(image)
+    nearest, distances, _, predicted_rooms = search(read_image(image_b64))
     return {
         "matches": [{"rank": rank, "id": IDS[i], "distance": round(float(d), 2),
                      "atlas_xy": [round(float(v), 4) for v in ATLAS[i]],
@@ -153,6 +162,7 @@ with gr.Blocks(title="Floor-plan similarity search") as demo:
     button.click(search_for_page, inputs=image_in, outputs=[drawings_out, rooms_gallery_out, cleaned_out, rooms_out],
                  api_visibility="private")
     gr.api(predict, api_name="predict")
+    gr.api(embed, api_name="embed")
 
 if __name__ == "__main__":
     # Render tells the app which port to use in the PORT variable; locally it is 7860
