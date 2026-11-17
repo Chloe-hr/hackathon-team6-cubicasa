@@ -23,6 +23,26 @@ A convolutional autoencoder that squeezes a floor-plan image (128 x 128 px) into
 
 Four test plans (left) and their five closest plans out of the 5,000. The matches have the same footprint and proportions: the narrow plan finds narrow plans, the plan made of three buildings finds plans with two or three volumes. The mistakes are in the figure too: three matches of the first query are pale scans, and the first match of the second query is a small square plan full of text.
 
+## Version 2: compare the layout, not the drawing style (used by the server)
+
+Version 1 grouped plans by how they're drawn (bold, faint, grey fills) as much as by their layout: a faint scan mostly found faint scans. In version 2 every plan is first cleaned down to its lines: a 5 x 5 px opening finds the wide parts (grey fills, grey paper, dark borders), the plan minus these parts leaves the lines, and each plan's lines are scaled by its own strong lines and cut into black and white. Then setup C is trained again on the cleaned plans, with the same settings.
+
+| | v1 (as drawn) | v2 (cleaned) |
+|---|---|---|
+| Retrieval top-1 (test) | 69% | **86%** |
+| Faintest quarter of the plans | 28% | **77%** |
+| Boldest quarter of the plans | 98% | 81% |
+
+![How much of the drawing style is in the codes](figures/10_style_in_codes.png)
+
+To measure the style we used the rendering features from Chloe's notebook (how much is drawn, contrast, edge strength, sharpness) plus the grey fills. For each one we compare a plan with its 5 nearest plans and with 5 random plans: 100% means the search ignores it. With v2 every style feature moves towards 100%, while the proportions stay low, so the neighbours still have the same shape. The boldest plans lose, because walls thicker than about 5 px partly disappear in the cleaning.
+
+![The atlas with v2](figures/12_plan_atlas_v2.png)
+
+On the v2 atlas bold, grey and faint drawings are mixed, and the map is ordered by shape: tall, narrow plans at the top, wide ones at the bottom, small drawings on the right.
+
+Version 2 files: `floorplan_ae_v2.onnx` (same two outputs as v1), `floorplan_ae_v2.pt`, `floorplan_ae_v2_config.json`, `collection_codes_v2.npy` and `atlas_v2_xy.npy` (each plan's place on the atlas, 0-1). To use v2, clean the plan after the preprocessing below with `clean_plan` from the server's [`app.py`](https://github.com/iaac-maai/hackathon-team6-cubicasa/blob/main/02_model_server/app.py).
+
 ## What's in this repository
 
 | File | What it is |
@@ -32,6 +52,8 @@ Four test plans (left) and their five closest plans out of the 5,000. The matche
 | `floorplan_ae_config.json` | the image size, the preprocessing steps and the code size |
 | `collection_codes.npy` | the codes of all 5,000 CubiCasa5K plans |
 | `collection_ids.json` | the plan each code belongs to |
+| `collection_plans_128.npz` | the 5,000 plans themselves after preprocessing (128 x 128, walls bright), with their ids and split, in the same order as the codes. The model server uses them to show the matches |
+| `floorplan_ae_v2.onnx`, `floorplan_ae_v2.pt`, `floorplan_ae_v2_config.json`, `collection_codes_v2.npy`, `atlas_v2_xy.npy` | version 2, trained on cleaned plans (see above). The model server uses it |
 | `examples/` | four test plans to try |
 
 ## Dataset
@@ -80,7 +102,7 @@ Input plans and how A, B and C rebuild them. A gives a grid-like blur, B keeps o
 
 All 5,000 plans placed on a map by their codes (UMAP), drawn as themselves: every cell of the grid shows the plan closest to its centre. Narrow plans are on the left and wide ones on the right, bold drawings at the top and small, very wide plans at the bottom. The model found this order by itself, only by learning to redraw the plans. It groups plans by shape and by how they're drawn, not by how the rooms are used.
 
-## Limitations: where it fails
+## Limitations of version 1: where it fails
 
 ![Where the search fails](figures/06_failures_by_ink.png)
 
@@ -124,7 +146,7 @@ for i in np.argsort(distances)[:5]:
     print(ids[i], round(float(distances[i]), 1))
 ```
 
-The first result is the plan itself, because it's in the collection too.
+The first result is the plan itself, because it's in the collection too. This snippet uses version 1; for version 2 see above.
 
 ## Links
 

@@ -29,7 +29,7 @@ pip install -r requirements.txt
 ```
 
 1. Put the data in `01_autoencoder/data/`: either the 5.5 GB `cubicasa5k.zip` from Zenodo, or `cubicasa5k_128.npz` (27 MB), which the notebook builds from the zip the first time.
-2. Open `notebook/autoencoder.ipynb` and run all. On a laptop CPU the three setups train in about 7 minutes.
+2. Open `notebook/autoencoder.ipynb` and run all. On a laptop CPU the three setups train in about 7 minutes, and version 2 in about 3 more.
 
 The notebook saves the figures in `figures/`, what the server needs in `model_app/` and everything for Hugging Face in `models/`.
 
@@ -75,16 +75,43 @@ Input plans and how A, B and C rebuild them. A gives a grid-like blur, B keeps o
 
 All three setups were still improving at epoch 20.
 
+## Version 2: compare the layout, not the drawing style
+
+Version 1 grouped plans by how they're drawn (bold, faint, grey fills) as much as by their layout: a faint scan mostly found faint scans. Section 6 of the notebook fixes this, with ideas from Chloe's notebook:
+- **measure the style:** her rendering features (how much is drawn, contrast, edge strength, sharpness), to see how much of them is in the codes, and her error on the drawn pixels only;
+- **take the style out:** every plan is cleaned down to its lines before the model. A 5 x 5 px opening finds the wide parts (grey fills, grey paper, dark borders), the plan minus these parts leaves the lines, and each plan's lines are scaled by its own strong lines and cut into black and white;
+- **train setup C again** on the cleaned plans, with the same settings.
+
+![Cleaning](figures/09_cleaning.png)
+
+| | v1 (as drawn) | v2 (cleaned) |
+|---|---|---|
+| Retrieval top-1 (test) | 69% | **86%** |
+| Faintest quarter of the plans | 28% | **77%** |
+| Boldest quarter of the plans | 98% | 81% |
+
+![How much of the drawing style is in the codes](figures/10_style_in_codes.png)
+
+For each feature we compare a plan with its 5 nearest plans and with 5 random plans: 100% means the search ignores it. With v2 every style feature moves towards 100% (how much is drawn from 54% to 74%, sharpness from 69% to 85%), while the proportions stay low (23% to 30%): the neighbours still have the same shape, whatever pen drew them. The boldest plans lose, because walls thicker than about 5 px partly disappear in the cleaning.
+
+![Similarity search with v2](figures/11_similarity_search_v2.png)
+
+The same four queries with v2. The faint scan (second row) now finds bold drawings with the same layout, and the narrow flat (last row) finds narrow flats with the balcony and the bathroom in the same places.
+
+![The atlas with v2](figures/12_plan_atlas_v2.png)
+
+On the v2 atlas bold, grey and faint drawings are mixed, and the map is ordered by shape: tall, narrow plans at the top, wide ones at the bottom, small drawings on the right. The model server uses v2.
+
 ## Model
 
-The model is on [Hugging Face](https://huggingface.co/iaac-maai/hackathon-team6-cubicasa-ae). In `model_app/` the config, `collection_ids.json` and the example plans are on GitHub, while `floorplan_ae.onnx` (two outputs: the code and the reconstruction) and `collection_codes.npy` (the codes of all 5,000 plans) are only on Hugging Face.
+The model is on [Hugging Face](https://huggingface.co/iaac-maai/hackathon-team6-cubicasa-ae), version 1 and version 2. In `model_app/` the configs, `collection_ids.json` and the example plans are on GitHub, while the models (`floorplan_ae.onnx` and `floorplan_ae_v2.onnx`, two outputs each: the code and the reconstruction), the codes of all 5,000 plans (`collection_codes.npy`, `collection_codes_v2.npy`) and the v2 atlas positions (`atlas_v2_xy.npy`) are only on Hugging Face.
 
 ## Limitations
 
 - At 128 px thin walls, doors, furniture and text blur, so the model compares the overall shape, not the details.
 - Similar pixels aren't a similar use: two plans can look alike and have very different room programmes. We don't use the room annotations.
-- The way a plan is drawn still counts: faint scans are found much less often (28% against 98% for the boldest plans), and they often find other faint scans.
-- Retrieval is 69%, not 100%: in about 3 out of 10 cases a slightly shifted copy doesn't find its own original first.
+- The way a plan is drawn still counts. In v1 faint scans were found much less often (28% against 98% for the boldest plans) and they mostly found other faint scans. v2 brings the faint plans to 77%, but the boldest drop to 81%, and line thickness and the size of the drawing on the page still count.
+- Retrieval is 86% with v2 (69% with v1), not 100%: in about 1 out of 7 cases a slightly shifted copy doesn't find its own original first.
 - Mostly Finnish homes, and not rotation-invariant: a plan turned by 90 degrees may not find its original.
 - CC BY-NC-SA 4.0, so non-commercial use only.
 

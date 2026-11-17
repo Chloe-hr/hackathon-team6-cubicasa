@@ -1,0 +1,11 @@
+# Render "Blueprint": creates the web service from this repository in one step
+services:
+  - type: web
+    name: hackathon-team6-cubicasa
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: 02_model_server
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /
