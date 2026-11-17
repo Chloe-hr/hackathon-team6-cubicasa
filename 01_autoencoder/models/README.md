@@ -23,11 +23,31 @@ A convolutional autoencoder that squeezes a floor-plan image (128 x 128 px) into
 
 Four test plans (left) and their five closest plans out of the 5,000. The matches have the same footprint and proportions: the narrow plan finds narrow plans, the plan made of three buildings finds plans with two or three volumes. The mistakes are in the figure too: three matches of the first query are pale scans, and the first match of the second query is a small square plan full of text.
 
-## Version 2: compare the layout, not the drawing style (used by the server)
+## Version 3: compare the rooms (used by the server)
+
+Version 3 comes from Chloe's notebook [`internal_layout_v3.ipynb`](https://github.com/iaac-maai/hackathon-team6-cubicasa/blob/main/01_autoencoder/notebook/internal_layout_v3.ipynb). It reads the annotations of CubiCasa5K (`model.svg`) and draws every plan as a room map with 10 room types. The model keeps the encoder of setup C, reading the cleaned drawing, but its decoder has to draw the room map and the walls instead of the lines. So the code holds the layout, and it still works on an uploaded drawing, which has no annotations.
+
+![Rooms predicted by v3](figures/14_v3_predicted_rooms.png)
+
+For the 373 test plans with annotations we judged the 5 nearest training plans with the annotations:
+
+| | v2 | v3 | structural search on the annotations | random |
+|---|---|---|---|---|
+| Same number of bedrooms | 28% | **34%** | 78% | 21% |
+| Same number of bathrooms | 36% | **39%** | 81% | 29% |
+| Rooms off by | 4.7 | **3.7** | 1.4 | 5.7 |
+
+v3 beats v2 on every measure, by a little. The predicted plan area overlaps the true one by 68%, and the living room and bedrooms are found much better than bathrooms and kitchens, whose fixtures and names mostly disappear at 128 px.
+
+![An atlas of layouts](figures/17_layout_atlas_v3.png)
+
+Version 3 files: `floorplan_ae_v3.onnx` with two outputs, `code` (N x 128) and `rooms` (N x 12 x 128 x 128: channels 0 to 10 are the room classes, channel 11 the walls); `floorplan_ae_v3.pt`; `floorplan_ae_v3_config.json` with the room classes and colours; `collection_codes_v3.npy`; `atlas_v3_xy.npy`; and `collection_rooms_128.npz`, the true room maps of the 5,000 plans. The input is the cleaned drawing, see `clean_plan` in the server's [`app.py`](https://github.com/iaac-maai/hackathon-team6-cubicasa/blob/main/02_model_server/app.py).
+
+## Version 2: compare the layout, not the drawing style
 
 Version 1 grouped plans by how they're drawn (bold, faint, grey fills) as much as by their layout: a faint scan mostly found faint scans. In version 2 every plan is first cleaned down to its lines: a 5 x 5 px opening finds the wide parts (grey fills, grey paper, dark borders), the plan minus these parts leaves the lines, and each plan's lines are scaled by its own strong lines and cut into black and white. Then setup C is trained again on the cleaned plans, with the same settings.
 
-| | v1 (as drawn) | v2 (cleaned) |
+| | v1 | v2 |
 |---|---|---|
 | Retrieval top-1 (test) | 69% | **86%** |
 | Faintest quarter of the plans | 28% | **77%** |
@@ -47,13 +67,14 @@ Version 2 files: `floorplan_ae_v2.onnx` (same two outputs as v1), `floorplan_ae_
 
 | File | What it is |
 |---|---|
-| `floorplan_ae.onnx` | the model, 4.5 MB. Two outputs: `code` (N x 128, used for the search) and `reconstruction` (N x 1 x 128 x 128, the plan rebuilt from the code) |
+| `floorplan_ae.onnx` | the model, 4.5 MB. Two outputs: `code`, N x 128, used for the search, and `reconstruction`, N x 1 x 128 x 128, the plan rebuilt from the code |
 | `floorplan_ae.pt` | the same weights for PyTorch |
 | `floorplan_ae_config.json` | the image size, the preprocessing steps and the code size |
 | `collection_codes.npy` | the codes of all 5,000 CubiCasa5K plans |
 | `collection_ids.json` | the plan each code belongs to |
-| `collection_plans_128.npz` | the 5,000 plans themselves after preprocessing (128 x 128, walls bright), with their ids and split, in the same order as the codes. The model server uses them to show the matches |
-| `floorplan_ae_v2.onnx`, `floorplan_ae_v2.pt`, `floorplan_ae_v2_config.json`, `collection_codes_v2.npy`, `atlas_v2_xy.npy` | version 2, trained on cleaned plans (see above). The model server uses it |
+| `collection_plans_128.npz` | the 5,000 plans themselves after preprocessing, 128 x 128 with the walls bright, with their ids and split, in the same order as the codes. The model server uses them to show the matches |
+| `floorplan_ae_v2.onnx`, `floorplan_ae_v2.pt`, `floorplan_ae_v2_config.json`, `collection_codes_v2.npy`, `atlas_v2_xy.npy` | version 2, trained on cleaned plans |
+| `floorplan_ae_v3.onnx`, `floorplan_ae_v3.pt`, `floorplan_ae_v3_config.json`, `collection_codes_v3.npy`, `atlas_v3_xy.npy`, `collection_rooms_128.npz` | version 3, drawing to rooms. The model server uses it |
 | `examples/` | four test plans to try |
 
 ## Dataset
@@ -80,7 +101,7 @@ Official split, seed 42, 20 epochs, batches of 64, Adam with learning rate 0.001
 |---|---|---|---|
 | A: dense, code 64 | 8,438,336 | 0.0162 | 21% |
 | B: conv, code 32 | 386,657 | 0.0153 | 47% |
-| **C: conv, code 128 (this model)** | 1,173,185 | **0.0131** | **69%** |
+| **C: conv, code 128** | 1,173,185 | **0.0131** | **69%** |
 
 Retrieval top-1: every test plan is shifted by 3 pixels and gets a bit of noise, and we count how often its closest code among the 400 test plans is the original.
 
@@ -146,7 +167,7 @@ for i in np.argsort(distances)[:5]:
     print(ids[i], round(float(distances[i]), 1))
 ```
 
-The first result is the plan itself, because it's in the collection too. This snippet uses version 1; for version 2 see above.
+The first result is the plan itself, because it's in the collection too. This snippet uses version 1; for versions 2 and 3 see above.
 
 ## Links
 

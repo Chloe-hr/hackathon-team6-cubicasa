@@ -1,9 +1,0 @@
-{
-  "architecture": "C (conv, code 128), trained on cleaned plans",
-  "latent_dim": 128,
-  "image_size": 128,
-  "preprocessing": "greyscale, invert (walls bright, background dark), pad to a square with black, resize to 128x128 (Lanczos), pixels scaled to 0-1; then cleaned: keep only lines thinner than 5 px (plan minus its 5x5 opening), scale by the 90th percentile of its lines, threshold 0.35",
-  "similarity": "Euclidean distance between codes; smaller = more similar",
-  "collection": "CubiCasa5K, all 5,000 plans (train + validation + test)",
-  "test_retrieval_top1": 0.863
-}

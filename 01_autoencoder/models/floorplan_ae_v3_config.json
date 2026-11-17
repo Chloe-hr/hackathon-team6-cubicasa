@@ -1,0 +1,40 @@
+{
+  "architecture": "encoder of setup C, code 128; decoder draws 11 room classes and the walls",
+  "latent_dim": 128,
+  "image_size": 128,
+  "preprocessing": "greyscale, invert (walls bright, background dark), pad to a square with black, resize to 128x128 (Lanczos); then cleaned: keep only lines thinner than 5 px (plan minus its 5x5 opening), scale by the 90th percentile of its lines, threshold 0.35; pixels 0-1",
+  "outputs": {
+    "code": "N x 128",
+    "rooms": "N x 12 x 128 x 128: channels 0-10 room classes (argmax), channel 11 walls (logit)"
+  },
+  "room_classes": [
+    "background",
+    "Bedroom",
+    "Bath",
+    "Sauna",
+    "Kitchen",
+    "LivingRoom",
+    "Dining",
+    "Circulation",
+    "Storage",
+    "Garage",
+    "Other"
+  ],
+  "room_colours": [
+    "white",
+    "#4477aa",
+    "#66ccee",
+    "#228833",
+    "#ccbb44",
+    "#ee6677",
+    "#aa3377",
+    "#bbbbbb",
+    "#ddaa33",
+    "#009988",
+    "#9999cc"
+  ],
+  "similarity": "Euclidean distance between codes; smaller = more similar",
+  "collection": "CubiCasa5K, all 5,000 plans (train + validation + test)",
+  "test_same_bedrooms": 0.34,
+  "test_room_type_accuracy": 0.293
+}

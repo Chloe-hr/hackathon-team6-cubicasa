@@ -4,36 +4,40 @@ Team 6, floor-plan similarity search
 
 **Public URL:** https://hackathon-team6-cubicasa.onrender.com
 
-⚠️ The server runs on Render's free plan, so it **falls asleep after 15 minutes without requests**. The first request after a pause wakes it up and takes about one minute. After that it answers in under a second.
+⚠️ The server runs on Render's free plan, so it **falls asleep after 15 minutes without requests**. The first request after a pause wakes it up and takes about one minute. After that it answers in about a second.
 
 ## What it does
 
-You upload a floor plan and get back the **five most similar plans** out of the 5,000 homes of CubiCasa5K. The server runs version 2 of our autoencoder ([`01_autoencoder/`](../01_autoencoder/), section 6 of the notebook):
+You upload a floor plan and get back the **five plans with the most similar layout** out of the 5,000 homes of CubiCasa5K, and the rooms the model sees in your plan. The server runs version 3 of our model, trained in [`01_autoencoder/notebook/internal_layout_v3.ipynb`](../01_autoencoder/notebook/internal_layout_v3.ipynb), section 8:
 1. it cleans the plan down to its lines, so a faint scan and a bold drawing look the same;
-2. it turns the cleaned plan into a code of 128 numbers;
-3. it looks for the five closest codes among the codes of the 5,000 plans.
+2. the encoder turns the cleaned plan into a code of 128 numbers. It was trained together with a decoder that draws the room types and the walls, so the code holds the layout;
+3. it looks for the five closest codes among the codes of the 5,000 plans;
+4. the decoder draws the rooms it sees in your plan.
 
 It has two doors:
-- a **page for people** at the URL above: upload a plan or click an example, then "Find similar plans". The page also shows the cleaned plan, which is what the model sees, and how the model redraws it;
+- a **page for people** at the URL above: upload a plan or click an example, then "Find similar plans". The page shows the five plans as drawn and as room maps, your plan cleaned, and the rooms the model sees in it;
 - an **API for programs** at `/predict`, which the Cloudflare app will use on Wednesday.
 
 ## Input and output of the API
 
 | | |
 |---|---|
-| **Input** | one floor-plan image (PNG or JPEG) as a base64 text. A `data:image/png;base64,` prefix is allowed |
-| **Preprocessing** (on the server, the same as in training) | greyscale, inverted (walls bright), padded to a square, 128 x 128 px; then cleaned: only the lines thinner than 5 px are kept, scaled by the plan's own lines and cut into black and white |
+| **Input** | one floor-plan image, PNG or JPEG, as a base64 text. A `data:image/png;base64,` prefix is allowed |
+| **Preprocessing** | the same as in training: greyscale, inverted so the walls are bright, padded to a square, 128 x 128 px; then cleaned: only the lines thinner than 5 px are kept, scaled by the plan's own lines and cut into black and white |
 | **Output** | a JSON dictionary, see below |
 
 ```json
 {
   "matches": [
-    {"rank": 1, "id": "high_quality_architectural/1191", "distance": 14.18, "atlas_xy": [0.4143, 0.259], "image_png_base64": "iVBORw0KGgo..."},
-    {"rank": 2, "id": "high_quality_architectural/9620", "distance": 93.23, "atlas_xy": [0.404, 0.273], "image_png_base64": "iVBORw0KGgo..."},
+    {"rank": 1, "id": "high_quality_architectural/1191", "distance": 18.04, "atlas_xy": [0.25, 0.36],
+     "image_png_base64": "iVBORw0KGgo...", "rooms_png_base64": "iVBORw0KGgo..."},
+    {"rank": 2, "id": "high_quality_architectural/9620", "distance": 106.43, "atlas_xy": [0.24, 0.35],
+     "image_png_base64": "iVBORw0KGgo...", "rooms_png_base64": "iVBORw0KGgo..."},
     ...
   ],
-  "atlas_xy": [0.4605, 0.234],
-  "reconstruction_error": 0.09326
+  "atlas_xy": [0.2469, 0.3552],
+  "rooms_png_base64": "iVBORw0KGgo...",
+  "room_colours": {"Bedroom": "#4477aa", "Bath": "#66ccee", "Sauna": "#228833", ...}
 }
 ```
 
@@ -41,11 +45,13 @@ It has two doors:
 |---|---|
 | `matches` | the five closest plans, the most similar first |
 | `id` | the plan's folder in CubiCasa5K |
-| `distance` | the distance between the two codes. Smaller = more similar. Our examples come from the collection, so each one finds itself first, at a distance much smaller than the others (about 0 to 15). Between two different plans it is usually 80 or more |
-| `image_png_base64` | the matched plan as drawn, as a 128 x 128 PNG (dark lines on white), ready to show in a page |
-| `atlas_xy` (of a match) | where that plan sits on the atlas of the 5,000 plans (x and y between 0 and 1) |
+| `distance` | the distance between the two codes. Smaller = more similar. Our examples come from the collection, so each one finds itself first, at a much smaller distance than the others. Between two different plans it is usually 90 or more |
+| `image_png_base64` | the matched plan as drawn, as a 128 x 128 PNG with dark lines on white |
+| `matches[].rooms_png_base64` | the matched plan's true rooms, from the annotations of CubiCasa5K, as a 128 x 128 PNG with one colour per room type |
+| `matches[].atlas_xy` | where that plan sits on the atlas of the 5,000 plans; x and y go from 0 to 1 |
 | `atlas_xy` | where the uploaded plan lands on the atlas: the middle of its five matches. The app uses it to show the plan on the map |
-| `reconstruction_error` | how well the model redraws the cleaned plan (mean squared error). A high value means the model has not seen many plans like this one, so trust the matches less |
+| `rooms_png_base64` | the rooms the model sees in the uploaded plan, in the same colours |
+| `room_colours` | the colour of each room type |
 
 ## Call it from a program
 
@@ -79,25 +85,26 @@ result = json.loads(answer.split("event: complete\ndata: ", 1)[1].splitlines()[0
 print([(m["id"], m["distance"]) for m in result["matches"]])
 ```
 
-[`call_api.ipynb`](call_api.ipynb) does both calls on the online server and shows the five plans it gets back.
+[`call_api.ipynb`](call_api.ipynb) does both calls on the online server and shows the five plans it gets back, as drawn and as rooms.
 
 ## The model behind it
 
 | | |
 |---|---|
-| **Type** | convolutional autoencoder: 4 strided convolutions (128 → 8 px) → code of 128 numbers → 4 transposed convolutions back to 128 px |
-| **Trained on** | CubiCasa5K, the 4,200 training plans (official split), cleaned down to their lines; 20 epochs, binary cross-entropy |
-| **Use** | similarity search: the codes of similar layouts are close, so the search is the five smallest distances between codes |
-| **Test result** | a copy of a test plan, shifted by 3 px, with light noise and then cleaned, finds its own original first in 86% of the cases. Monday's version 1, trained on the plans as drawn, got 69% (raw pixels 4%, PCA 25%) |
-| **Why version 2** | version 1 grouped plans by how they're drawn (bold, faint, grey fills) as much as by their layout. The cleaning takes most of the style away: the faint plans are now found in 77% of the cases instead of 28% |
-| **Format** | ONNX with two outputs, the code and the reconstruction, run with ONNX Runtime: no PyTorch on the server |
+| **Type** | encoder of setup C: 4 strided convolutions from 128 to 8 px and a code of 128 numbers. The decoder draws 11 room classes, the background and 10 room types, and the walls |
+| **Trained on** | CubiCasa5K, the 4,194 training plans of the official split that have usable annotations: the cleaned drawing as input, the room map and the walls from `model.svg` as the target. 20 epochs, cross-entropy for the rooms and binary cross-entropy for the walls |
+| **Use** | similarity search by layout: the five smallest distances between codes |
+| **Test result** | for the 373 test plans with annotations, 34% of the five matches have the same number of bedrooms and 39% the same number of bathrooms. Version 2 gets 28% and 36%, random plans 21% and 29% |
+| **Rooms** | the predicted plan area overlaps the true one by 68%. It finds the living room and the bedrooms better than the small rooms: bathrooms and kitchens are mostly missed |
+| **Format** | ONNX with two outputs, the code and the 12 channels of the decoder, run with ONNX Runtime: no PyTorch on the server |
 | **Model card** | https://huggingface.co/iaac-maai/hackathon-team6-cubicasa-ae |
 
 These files are on Hugging Face, not on GitHub, and the server downloads them when it starts:
-- the model, `floorplan_ae_v2.onnx`;
-- the codes of the 5,000 plans, `collection_codes_v2.npy`;
-- their positions on the atlas, `atlas_v2_xy.npy`;
-- the plans themselves at 128 px, `collection_plans_128.npz`.
+- the model, `floorplan_ae_v3.onnx`;
+- the codes of the 5,000 plans, `collection_codes_v3.npy`;
+- their positions on the atlas, `atlas_v3_xy.npy`;
+- the plans themselves at 128 px, `collection_plans_128.npz`;
+- their room maps, `collection_rooms_128.npz`.
 
 If a copy of a file is in this folder, the server uses the copy instead, which is handy offline.
 
@@ -113,22 +120,22 @@ python app.py                    # then open http://127.0.0.1:7860
 
 ## Put it online (Render, free)
 
-`render.yaml` is a Render Blueprint. On [render.com](https://render.com): **New → Blueprint**, pick this repository and set the Blueprint path to `02_model_server/render.yaml`. It creates a free Python web service in Frankfurt that installs `requirements.txt` and starts `python app.py` from the `02_model_server` folder (`rootDir`). Python is pinned to 3.12 by `.python-version`.
+`render.yaml` is a Render Blueprint. On [render.com](https://render.com): **New → Blueprint**, pick this repository and set the Blueprint path to `02_model_server/render.yaml`. It creates a free Python web service in Frankfurt that installs `requirements.txt` and starts `python app.py` from the `02_model_server` folder (`rootDir`). Python is pinned to 3.12 by `.python-version`. Every push to `main` deploys again.
 
 ## Files
 
 | File | Contents |
 |---|---|
-| `app.py` | the preprocessing, the cleaning, the search, the page and the API |
-| `floorplan_ae_v2_config.json` | image size, preprocessing and cleaning steps, and the test result of the model |
+| `app.py` | the preprocessing, the cleaning, the search, the room map, the page and the API |
+| `floorplan_ae_v3_config.json` | image size, preprocessing, room classes and colours, and the test results of the model |
 | `examples/` | four test plans from the collection |
 | `requirements.txt`, `.python-version`, `render.yaml` | what Render needs to build and start the server |
 | `call_api.ipynb` | calls the online API and prints the result |
 
 ## Limitations
 
-- The model compares the overall shape at 128 px: thin walls, doors, furniture and text blur away.
-- The drawing style still counts a little: line thickness and the size of the drawing on the page stay after the cleaning. Walls thicker than about 5 px partly disappear, so the boldest plans are found less often than in version 1 (81% against 98%).
-- Similar lines aren't a similar use: two plans can look alike and have very different rooms.
+- The model sees the plan at 128 px: thin walls, doors, fixtures and room names blur away, so it reads the big rooms better than the bathrooms and kitchens.
+- The matches are better than with version 2 but far from perfect: Chloe's search on the true annotations finds the same number of bedrooms in 78% of the cases, the model in 34%.
+- About a quarter of the room pixels in CubiCasa5K are labelled "Other", so some room maps say little about the plan.
 - It isn't rotation-invariant: a plan turned by 90 degrees finds other plans.
 - The data is CC BY-NC-SA 4.0, so non-commercial use only.

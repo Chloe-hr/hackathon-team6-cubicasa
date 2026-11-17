@@ -14,10 +14,10 @@ An architect uploads a floor plan and gets back the five most similar plans out 
 |---|---|
 | Name | CubiCasa5K |
 | Source | [Zenodo 2613548](https://zenodo.org/records/2613548) |
-| Size | 5,000 floor-plan images (official split: 4,200 train, 400 validation, 400 test), one 5.5 GB zip |
+| Size | 5,000 floor-plan images, official split 4,200 / 400 / 400, one 5.5 GB zip |
 | Licence | CC BY-NC-SA 4.0 |
 | Cite | Kalervo, A. et al. (2019), CubiCasa5K: A Dataset and an Improved Multi-Task Model for Floorplan Image Analysis, SCIA |
-| Preprocessing | the first floor of each home (`F1_scaled.png`), greyscale, inverted (walls bright), padded to a square, 128 x 128 px, pixels between 0 and 1 |
+| Preprocessing | the first floor of each home, `F1_scaled.png`; greyscale, inverted so the walls are bright, padded to a square, 128 x 128 px, pixels between 0 and 1 |
 
 ## How to run
 
@@ -84,7 +84,7 @@ Version 1 grouped plans by how they're drawn (bold, faint, grey fills) as much a
 
 ![Cleaning](figures/09_cleaning.png)
 
-| | v1 (as drawn) | v2 (cleaned) |
+| | v1 | v2 |
 |---|---|---|
 | Retrieval top-1 (test) | 69% | **86%** |
 | Faintest quarter of the plans | 28% | **77%** |
@@ -100,11 +100,10 @@ The same four queries with v2. The faint scan (second row) now finds bold drawin
 
 ![The atlas with v2](figures/12_plan_atlas_v2.png)
 
-On the v2 atlas bold, grey and faint drawings are mixed, and the map is ordered by shape: tall, narrow plans at the top, wide ones at the bottom, small drawings on the right. The model server uses v2.
-
+On the v2 atlas bold, grey and faint drawings are mixed, and the map is ordered by shape: tall, narrow plans at the top, wide ones at the bottom, small drawings on the right. 
 ## Model
 
-The model is on [Hugging Face](https://huggingface.co/iaac-maai/hackathon-team6-cubicasa-ae), version 1 and version 2. In `model_app/` the configs, `collection_ids.json` and the example plans are on GitHub, while the models (`floorplan_ae.onnx` and `floorplan_ae_v2.onnx`, two outputs each: the code and the reconstruction), the codes of all 5,000 plans (`collection_codes.npy`, `collection_codes_v2.npy`) and the v2 atlas positions (`atlas_v2_xy.npy`) are only on Hugging Face.
+The model is on [Hugging Face](https://huggingface.co/iaac-maai/hackathon-team6-cubicasa-ae), versions 1, 2 and 3. Version 3 is exported by `notebook/internal_layout_v3.ipynb`, with its codes, its atlas positions and the room maps of the 5,000 plans. In `model_app/` the configs, `collection_ids.json` and the example plans are on GitHub, while the models (`floorplan_ae.onnx` and `floorplan_ae_v2.onnx`, two outputs each: the code and the reconstruction), the codes of all 5,000 plans (`collection_codes.npy`, `collection_codes_v2.npy`) and the v2 atlas positions (`atlas_v2_xy.npy`) are only on Hugging Face.
 
 ## Limitations
 
@@ -119,6 +118,30 @@ The model is on [Hugging Face](https://huggingface.co/iaac-maai/hackathon-team6-
 
 The three slides: [`slides/team6_monday.pdf`](slides/team6_monday.pdf).
 
-## Internal-layout v3 experiment
+## Version 3: compare the rooms, not only the lines (Chloe's notebook)
 
-[`notebook/internal_layout_v3.ipynb`](notebook/internal_layout_v3.ipynb) contains explained annotation inspection, 256 px room/wall/door masks, structural retrieval, synthetic checks and a human relevance-review workflow. Start with the synthetic checks, then point `DATASET_ROOT` to the extracted annotated CubiCasa5K dataset and official split files. Inspect overlays before enabling `RUN_COLLECTION`. Generated features and review CSVs live under the ignored `data/internal_layout_v3/` folder. No v3 neural model has been trained; uploaded drawings still need room/wall extraction. V2 remains the baseline.
+Version 2 compares the cleaned lines. Two plans can have the same outline and very different rooms, so Chloe's notebook [`notebook/internal_layout_v3.ipynb`](notebook/internal_layout_v3.ipynb) goes to the room programme. It reads the annotations of CubiCasa5K (`model.svg`: every room with its type, the walls, the doors), draws them as room maps with 10 room types, and searches by room counts, room areas and where each type sits in the plan. That search needs the annotations, which an uploaded plan doesn't have.
+
+So section 8 of the same notebook trains **v3**: the encoder of setup C reads the cleaned drawing, and the decoder has to draw the room map and the walls. The code in the middle has to hold the layout, and it works on any uploaded drawing.
+
+![Rooms predicted by v3](figures/14_v3_predicted_rooms.png)
+
+It finds the plan area (68% overlap) and puts the living room and the bedrooms roughly in the right places. It hardly finds bathrooms and kitchens: at 128 px, after the cleaning, their fixtures and names are mostly gone.
+
+![Are the neighbours similar homes?](figures/15_v3_relevance.png)
+
+For the 373 test plans with annotations we judged the 5 nearest training plans with the annotations:
+
+| | v2 | v3 | Chloe's structural search | random |
+|---|---|---|---|---|
+| Same number of bedrooms | 28% | **34%** | 78% | 21% |
+| Same number of bathrooms | 36% | **39%** | 81% | 29% |
+| Rooms off by | 4.7 | **3.7** | 1.4 | 5.7 |
+
+v3 beats v2 on every measure, by a little. The structural search uses the true annotations, so it's the best case and not something the app can do with an upload: it shows how much is left to gain. The model server uses v3.
+
+![An atlas of layouts](figures/17_layout_atlas_v3.png)
+
+All 5,000 plans placed by their v3 codes and drawn as their rooms: compact plans with a big living room and two or three bedrooms at the top right, wide houses on the left, small sheets with several homes at the bottom.
+
+Only the 5,000 `model.svg` files (44 MB) are needed, in `data/cubicasa5k/`; the drawings come from `data/cubicasa5k_128.npz`. The notebook also has Chloe's synthetic checks and a review sheet to judge matches by hand (sections 9 to 11). The review sheet hasn't been filled in yet.
