@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS searches (
   match_ids      TEXT NOT NULL,      -- the five matches, most similar first, as a JSON list
   atlas_x        REAL,               -- where the uploaded plan lands on the atlas of the 5,000 plans (0-1)
   atlas_y        REAL,
-  model          TEXT                -- which network answered: v1, v2 or v3
+  model          TEXT,               -- which network answered: v1, v2 or v3
+  embedding      TEXT                -- the 128 numbers of the uploaded plan, as JSON text (the worker compares them)
 );
 
 CREATE INDEX IF NOT EXISTS idx_searches_created_at ON searches (created_at);

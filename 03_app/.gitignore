@@ -1,3 +1,7 @@
 node_modules/
 .wrangler/
 .dev.vars
+dist/
+
+# the map data of the app is small and needed online (the root .gitignore skips every data/ folder)
+!public/data/*

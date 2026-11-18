@@ -1,1 +1,4 @@
 APP_PASSWORD=change-me
+
+# Optional: use the model server running on your computer (02_model_server, python app.py)
+# MODEL_URL=http://localhost:7860

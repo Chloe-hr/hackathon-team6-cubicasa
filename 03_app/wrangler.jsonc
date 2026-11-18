@@ -1,0 +1,25 @@
+// Team 6 app on Cloudflare Workers: the React page (built into dist/) + the API (worker/index.ts) + D1 + R2
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hackathon-team6-cubicasa-app",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  // Every path is the React page, except /api/... and the map data in /data/..., which run the worker first
+  // (it checks the password); the worker hands /data/... back to the assets through the ASSETS binding
+  "assets": { "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/data/*"] },
+  "vars": {
+    // Our model server on Render (02_model_server/), without a slash at the end
+    "MODEL_URL": "https://hackathon-team6-cubicasa.onrender.com",
+    "MODEL_API_NAME": "predict_model",   // the plan + the network the user chose: the five matches
+    "EXPLAIN_API_NAME": "explain_model"  // the same plan + network: every layer, the code, all 5,000 distances
+  },
+  // The database: one row per search (schema.sql)
+  "d1_databases": [
+    { "binding": "DB", "database_name": "hackathon-team6-db", "database_id": "1cf4c5cf-6131-4ddd-aa39-353989640fdd" }
+  ],
+  // File storage: the uploaded plans, the full answer of each search and its "look inside" answer
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "hackathon-team6-plans" }]
+  // The password is NOT here: it is a secret.
+  // Local:  APP_PASSWORD=... in a .dev.vars file (never commit it)
+  // Online: npx wrangler secret put APP_PASSWORD
+}

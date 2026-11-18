@@ -1,0 +1,17 @@
+/* TEAM */
+Team 6, IAAC MaAI 2026, AI Methods I hackathon
+Chloe Hraibeh, Jeff El Khoury, Luca Obejdeanu
+Barcelona
+
+/* THANKS */
+Salvador Cantuarias Brañes and Serjoscha Düring, for the course
+Ahti Kalervo, Juha Ylioinas, Markus Häikiö, Antti Karhu and Juho Kannala, for CubiCasa5K (2019)
+
+/* SITE */
+Last update: 2026/11/18
+Language: English
+Built with: React, Vite, TypeScript, Cloudflare Workers, D1, R2
+Model server: Gradio and ONNX Runtime on Render, models on Hugging Face
+Map: UMAP of the 128-number codes
+Room colours: Paul Tol's bright scheme, plus three more
+Font: Archivo
