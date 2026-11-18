@@ -1,5 +1,4 @@
 ---
-license: cc-by-nc-sa-4.0
 library_name: onnx
 pipeline_tag: image-feature-extraction
 tags:
@@ -83,7 +82,7 @@ Version 2 files: `floorplan_ae_v2.onnx` (same two outputs as v1), `floorplan_ae_
 |---|---|
 | Name | [CubiCasa5K](https://zenodo.org/records/2613548) |
 | Size | 5,000 floor-plan images, mostly of Finnish homes; official split 4,200 / 400 / 400 |
-| Licence | CC BY-NC-SA 4.0. This model is trained on it, so it keeps the same licence: non-commercial use only |
+| Dataset licence | CC BY-NC 4.0. [CubiCasa5K licence](https://github.com/CubiCasa/CubiCasa5k/blob/master/LICENSE) |
 | Cite | Kalervo, A. et al. (2019), CubiCasa5K: A Dataset and an Improved Multi-Task Model for Floorplan Image Analysis, SCIA |
 
 ## Architecture and preprocessing
@@ -133,7 +132,7 @@ The test plans in four quarters by how much is drawn on them. On the boldest qua
 - The way a plan is drawn influences the matches: faint scans are found much less often, and they often find other faint scans.
 - Retrieval is 69%: in about 3 out of 10 cases a slightly shifted copy doesn't find its own original first.
 - It isn't rotation-invariant, and it was trained on mostly Finnish homes.
-- Non-commercial licence, inherited from the data.
+- The training dataset is CC BY-NC 4.0. [CubiCasa5K licence](https://github.com/CubiCasa/CubiCasa5k/blob/master/LICENSE).
 
 ## How to use
 
@@ -173,3 +172,5 @@ The first result is the plan itself, because it's in the collection too. This sn
 
 - Code and notebook: https://github.com/iaac-maai/hackathon-team6-cubicasa
 - Authors: Chloe Hraibeh, Jeff El Khoury, Luca Obejdeanu, AI Methods I, IAAC MaAI 2026/27
+
+The v4 workflow writes a separate local bundle. See the [aligned model workflow](../README.md#aligned-layout-model-v4) for its inputs, model selection and verification.

@@ -1,160 +1,32 @@
-# 02: the model server (Tuesday)
+# Team 6 floor-plan similarity server
 
-Team 6, floor-plan similarity search
+The Gradio server uses ONNX Runtime to embed an uploaded floor plan and return the five closest gallery embeddings by Euclidean distance. It displays the decoder’s query room prediction and gallery annotations when available.
 
-**Public URL:** https://hackathon-team6-cubicasa.onrender.com
+## Run the aligned v4 bundle locally
 
-⚠️ The server runs on Render's free plan, so it **falls asleep after 15 minutes without requests**. The first request after a pause wakes it up and takes about one minute. After that it answers in about a second.
+From the repository root, using PowerShell and the project environment:
 
-## What it does
-
-You upload a floor plan and get back the **five plans with the most similar layout** out of the 5,000 homes of CubiCasa5K, and the rooms the model sees in your plan. The server runs version 3 of our model, trained in [`01_autoencoder/notebook/internal_layout_v3.ipynb`](../01_autoencoder/notebook/internal_layout_v3.ipynb), section 8:
-1. it cleans the plan down to its lines, so a faint scan and a bold drawing look the same;
-2. the encoder turns the cleaned plan into a code of 128 numbers. It was trained together with a decoder that draws the room types and the walls, so the code holds the layout;
-3. it looks for the five closest codes among the codes of the 5,000 plans;
-4. the decoder draws the rooms it sees in your plan.
-
-It has two doors:
-- a **page for people** at the URL above: upload a plan or click an example, then "Find similar plans". The page shows the five plans as drawn and as room maps, your plan cleaned, and the rooms the model sees in it;
-- an **API for programs** with two endpoints, `/predict` and `/embed`, explained below. The Cloudflare app will use it on Wednesday.
-
-## Input and output of the API
-
-| | |
-|---|---|
-| **Input** | one floor-plan image (PNG or JPEG) as a base64 text. A `data:image/png;base64,` prefix is allowed |
-| **Preprocessing** (on the server, the same as in training) | greyscale, inverted (walls bright), padded to a square, 128 x 128 px; then cleaned: only the lines thinner than 5 px are kept, scaled by the plan's own lines and cut into black and white |
-| **Output** | a JSON dictionary, see below |
-
-```json
-{
-  "matches": [
-    {"rank": 1, "id": "high_quality_architectural/1191", "distance": 18.04, "atlas_xy": [0.25, 0.36],
-     "image_png_base64": "iVBORw0KGgo...", "rooms_png_base64": "iVBORw0KGgo..."},
-    {"rank": 2, "id": "high_quality_architectural/9620", "distance": 106.43, "atlas_xy": [0.24, 0.35],
-     "image_png_base64": "iVBORw0KGgo...", "rooms_png_base64": "iVBORw0KGgo..."},
-    ...
-  ],
-  "atlas_xy": [0.2469, 0.3552],
-  "rooms_png_base64": "iVBORw0KGgo...",
-  "room_colours": {"Bedroom": "#4477aa", "Bath": "#66ccee", "Sauna": "#228833", ...}
-}
+```powershell
+python -m pip install -r 02_model_server/requirements.txt
+$env:LAYOUT_BUNDLE_DIR = (Resolve-Path '01_autoencoder/data/layout_aligned_v4/bundle').Path
+python 02_model_server/app.py
 ```
 
-| Field | Meaning |
-|---|---|
-| `matches` | the five closest plans, the most similar first |
-| `id` | the plan's folder in CubiCasa5K |
-| `distance` | the distance between the two codes. Smaller = more similar. Our examples come from the collection, so each one finds itself first, at a much smaller distance than the others. Between two different plans it is usually 90 or more |
-| `image_png_base64` | the matched plan as drawn, as a 128 x 128 PNG (dark lines on white) |
-| `matches[].rooms_png_base64` | the matched plan's true rooms, from the annotations of CubiCasa5K, as a 128 x 128 PNG with one colour per room type |
-| `matches[].atlas_xy` | where that plan sits on the atlas of the 5,000 plans (x and y between 0 and 1) |
-| `atlas_xy` | where the uploaded plan lands on the atlas: the middle of its five matches. The app uses it to show the plan on the map |
-| `rooms_png_base64` | the rooms the model sees in the uploaded plan, in the same colours |
-| `room_colours` | the colour of each room type |
+Generate the bundle first by following the [aligned model workflow](../01_autoencoder/README.md#aligned-layout-model-v4). The server needs `config.json`, `model.onnx` and `collection.npz` from the same export. Run `call_api.ipynb` with the same bundle path to validate the responses. The local URL defaults to `http://127.0.0.1:7860`.
 
-## The endpoints our product needs, and why
+## API
 
-Our product is a precedent search: an architect uploads a plan and gets back homes with a similar layout. Following the idea of the class slides, a search product does two things with the model: it adds plans to a catalog, once per plan, and it searches the catalog. For that we need two endpoints:
+Both endpoints accept a base64 PNG or JPEG, optionally with a data URI prefix. Both return the active model_version. Compare only embeddings from the same encoder release.
 
-| Endpoint | In | Out | Who calls it |
-|---|---|---|---|
-| `/predict` | one plan, as base64 | the 5 most similar plans out of the 5,000, with their drawings, room maps and places on the atlas, and the rooms the model sees in the upload | the Cloudflare app, at every search |
-| `/embed` | one plan, as base64 | its code: the 128 numbers of the v3 encoder | the app, when a new plan is added to the catalog; anyone who wants to compare plans on their own |
+| Endpoint | Response |
+| --- | --- |
+| `/embed` | `code` is a list of 128 numbers and `size` is 128. |
+| `/predict` | `matches` contains five ranked entries. Query `atlas_xy` is their mean position; query `rooms_png_base64` is a prediction. `room_colours` maps room labels to colours. |
 
-Why `/predict` does the whole search on the server: the codes of the 5,000 plans, their drawings and their room maps are already loaded next to the model, so one call gives the app everything the page shows. The app doesn't have to load 5,000 codes for every search.
+Each match contains `rank`, `id`, `distance`, `atlas_xy` and `image_png_base64`. `has_rooms` records whether the gallery annotation is available. `rooms_png_base64` contains the annotated gallery map or JSON null.
 
-Why we also need `/embed`: the model should not be the place where the catalog lives. With `/embed`, the app can store the code of every plan an architect uploads in the database, next to the plan, and compare codes there. The catalog can then grow with the users' own plans without training the model again. The code from `/embed` is exactly the one `/predict` compares: for our example plan 1191 both give a distance of 18.04 to the stored plan.
+Use `gradio_client.Client(url).predict(image_b64, api_name="/predict")` or `api_name="/embed"`. For plain HTTP, post `{"data": ["<base64 image>"]}` to `/gradio_api/call/predict` or `/gradio_api/call/embed`, then fetch the same endpoint with `/<event_id>` appended. The completed event contains the result.
 
-What we don't need: an endpoint for the reconstruction error or for anomalies. Our use is the search, and the room map the page shows already comes with `/predict`.
+## Render configuration
 
-On Wednesday the app starts with `/predict`. Saving the codes of uploaded plans with `/embed` is the next step, if there is time.
-
-## Call it from a program
-
-Every example below works from any computer. If the server is asleep, the first call waits about a minute.
-
-**Python with `gradio_client`** (`pip install gradio_client`):
-
-```python
-import base64
-from gradio_client import Client
-
-client = Client("https://hackathon-team6-cubicasa.onrender.com")
-image_b64 = base64.b64encode(open("examples/plan_high_quality_architectural_1191.png", "rb").read()).decode()
-result = client.predict(image_b64, api_name="/predict")
-for match in result["matches"]:
-    print(match["rank"], match["id"], match["distance"])
-
-code = client.predict(image_b64, api_name="/embed")["code"]   # the 128 numbers of the plan
-```
-
-**Plain HTTP**, in two steps, which is what the Cloudflare app does:
-1. `POST /gradio_api/call/predict` with `{"data": ["<base64 image>"]}` returns an `event_id`;
-2. `GET /gradio_api/call/predict/<event_id>` returns the result, on the line after `event: complete`.
-
-```python
-import base64, json, requests
-
-url = "https://hackathon-team6-cubicasa.onrender.com"
-image_b64 = base64.b64encode(open("examples/plan_high_quality_architectural_1191.png", "rb").read()).decode()
-event_id = requests.post(f"{url}/gradio_api/call/predict", json={"data": [image_b64]}, timeout=120).json()["event_id"]
-answer = requests.get(f"{url}/gradio_api/call/predict/{event_id}", timeout=120).text
-result = json.loads(answer.split("event: complete\ndata: ", 1)[1].splitlines()[0])[0]
-print([(m["id"], m["distance"]) for m in result["matches"]])
-```
-
-[`call_api.ipynb`](call_api.ipynb) calls `/predict` in both ways and `/embed` on the online server, and shows the five plans it gets back, as drawn and as rooms.
-
-## The model behind it
-
-| | |
-|---|---|
-| **Type** | encoder of setup C: 4 strided convolutions (128 → 8 px) and a code of 128 numbers. The decoder draws 11 room classes, the background and 10 room types, and the walls |
-| **Trained on** | CubiCasa5K, the 4,194 training plans (official split) that have usable annotations: the cleaned drawing as input, the room map and the walls from `model.svg` as the target. 20 epochs, cross-entropy for the rooms and binary cross-entropy for the walls |
-| **Use** | similarity search by layout: the five smallest distances between codes |
-| **Test result** | for the 373 test plans with annotations, 34% of the five matches have the same number of bedrooms and 39% the same number of bathrooms. Version 2 gets 28% and 36%, random plans 21% and 29% |
-| **Rooms** | the predicted plan area overlaps the true one by 68%. It finds the living room and the bedrooms better than the small rooms: bathrooms and kitchens are mostly missed |
-| **Format** | ONNX with two outputs, the code and the 12 channels of the decoder, run with ONNX Runtime: no PyTorch on the server |
-| **Model card** | https://huggingface.co/iaac-maai/hackathon-team6-cubicasa-ae |
-
-These files are on Hugging Face, not on GitHub, and the server downloads them when it starts:
-- the model, `floorplan_ae_v3.onnx`;
-- the codes of the 5,000 plans, `collection_codes_v3.npy`;
-- their positions on the atlas, `atlas_v3_xy.npy`;
-- the plans themselves at 128 px, `collection_plans_128.npz`;
-- their room maps, `collection_rooms_128.npz`.
-
-If a copy of a file is in this folder, the server uses the copy instead, which is handy offline.
-
-## Run it on your computer
-
-```bash
-cd 02_model_server
-python3.12 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python app.py                    # then open http://127.0.0.1:7860
-```
-
-## Put it online (Render, free)
-
-`render.yaml` is a Render Blueprint. On [render.com](https://render.com): **New → Blueprint**, pick this repository and set the Blueprint path to `02_model_server/render.yaml`. It creates a free Python web service in Frankfurt that installs `requirements.txt` and starts `python app.py` from the `02_model_server` folder (`rootDir`). Python is pinned to 3.12 by `.python-version`. Every push to `main` deploys again.
-
-## Files
-
-| File | Contents |
-|---|---|
-| `app.py` | the preprocessing, the cleaning, the search, the room map, the page and the two endpoints |
-| `floorplan_ae_v3_config.json` | image size, preprocessing, room classes and colours, and the test results of the model |
-| `examples/` | four test plans from the collection |
-| `requirements.txt`, `.python-version`, `render.yaml` | what Render needs to build and start the server |
-| `call_api.ipynb` | calls the online API and prints the result |
-
-## Limitations
-
-- The model sees the plan at 128 px: thin walls, doors, fixtures and room names blur away, so it reads the big rooms better than the bathrooms and kitchens.
-- The matches are better than with version 2 but far from perfect: Chloe's search on the true annotations finds the same number of bedrooms in 78% of the cases, the model in 34%.
-- About a quarter of the room pixels in CubiCasa5K are labelled "Other", so some room maps say little about the plan.
-- It isn't rotation-invariant: a plan turned by 90 degrees finds other plans.
-- The data is CC BY-NC-SA 4.0, so non-commercial use only.
+The default startup still uses the v3 artifacts when `LAYOUT_BUNDLE_DIR` is unset. An approved v4 rollout requires placing the complete bundle on the host and setting that variable to its location. The Render blueprint continues to use `python app.py`. The public demo uses the existing v3 release. [Render demo](https://hackathon-team6-cubicasa.onrender.com).

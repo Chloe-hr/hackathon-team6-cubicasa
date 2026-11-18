@@ -15,7 +15,7 @@ An architect uploads a floor plan and gets back the five most similar plans out 
 | Name | CubiCasa5K |
 | Source | [Zenodo 2613548](https://zenodo.org/records/2613548) |
 | Size | 5,000 floor-plan images (official split: 4,200 train, 400 validation, 400 test), one 5.5 GB zip |
-| Licence | CC BY-NC-SA 4.0 |
+| Dataset licence | CC BY-NC 4.0. [CubiCasa5K licence](https://github.com/CubiCasa/CubiCasa5k/blob/master/LICENSE) |
 | Cite | Kalervo, A. et al. (2019), CubiCasa5K: A Dataset and an Improved Multi-Task Model for Floorplan Image Analysis, SCIA |
 | Preprocessing | the first floor of each home (`F1_scaled.png`), greyscale, inverted (walls bright), padded to a square, 128 x 128 px, pixels between 0 and 1 |
 
@@ -112,7 +112,7 @@ The model is on [Hugging Face](https://huggingface.co/iaac-maai/hackathon-team6-
 - The way a plan is drawn still counts. In v1 faint scans were found much less often (28% against 98% for the boldest plans) and they mostly found other faint scans. v2 brings the faint plans to 77%, but the boldest drop to 81%, and line thickness and the size of the drawing on the page still count.
 - Retrieval is 86% with v2 (69% with v1), not 100%: in about 1 out of 7 cases a slightly shifted copy doesn't find its own original first.
 - Mostly Finnish homes, and not rotation-invariant: a plan turned by 90 degrees may not find its original.
-- CC BY-NC-SA 4.0, so non-commercial use only.
+- CubiCasa5K uses [CC BY-NC 4.0](https://github.com/CubiCasa/CubiCasa5k/blob/master/LICENSE).
 
 ## Slides
 
@@ -145,3 +145,29 @@ v3 beats v2 on every measure, by a little. The structural search uses the true a
 All 5,000 plans placed by their v3 codes and drawn as their rooms: compact plans with a big living room and two or three bedrooms at the top right, wide houses on the left, small sheets with several homes at the bottom.
 
 Only the 5,000 `model.svg` files (44 MB) are needed, in `data/cubicasa5k/`; the drawings come from `data/cubicasa5k_128.npz`. The notebook also has Chloe's synthetic checks and a review sheet to judge matches by hand (sections 9 to 11). The review sheet hasn't been filled in yet.
+
+## Aligned layout model v4
+
+1. Install the packages in `01_autoencoder/requirements.txt` in the notebook kernel. Open `notebook/internal_layout_v3.ipynb` from inside the repository.
+2. Extract CubiCasa5K with all three official split files, `F1_scaled.png` drawings and `model.svg` annotations. Set `CUBICASA_ROOT` to that directory if it differs from the notebook default. Put `cubicasa5k_128.npz` in `01_autoencoder/data` to supply the ordered IDs and split labels.
+3. Run the notebook in order. Check `alignment.png` and `annotation_failures.csv` in `01_autoencoder/data/layout_aligned_v4`. Training and serving share grayscale conversion, inversion, full-sheet square padding, Lanczos resizing to 128 pixels and line cleaning. Only valid annotations enter supervised training.
+4. The no-BN and BN models each train for 20 epochs on CPU. Their best validation-loss checkpoints and complete histories are saved separately. `comparison.csv` compares room segmentation and retrieval on validation. Retrieval uses a common training gallery and valid validation queries with structural features, and selects the model with lowest mean structural distance.
+5. See `retrieval_examples.png` and `validation_predictions.png` for examples. Structural distance and room counts are proxies for architectural similarity. Human relevance and connectivity are unverified. Earlier experiments inspected the test split.
+6. After ONNX and PyTorch agree on codes and decoder logits for batches of 1 and 4, the notebook saves `bundle` with weights, ONNX, a configuration and ordered gallery data. Use that directory with the [local server](../02_model_server/README.md#run-the-aligned-v4-bundle-locally).
+
+To repeat the experiment after a successful run, set CUBICASA_RUN_DIR to a new directory before starting the kernel. The notebook emits fresh embeddings and atlas coordinates for its selected encoder. Keep the gallery and ONNX graph from that run together.
+
+### Measured validation results
+
+The run used Python 3.14.7 on CPU. All 5,000 regenerated drawing arrays matched the previous cache. We inspected ten full-sheet overlays across the three dataset groups. Eight SVGs lacked internal room polygons, leaving 4,194 training, 400 validation and 398 test targets. Segmentation uses all 400 validation targets. The existing structural index accepted 358 validation queries and 3,916 training gallery plans; both encoders and both retrieval baselines used that same subset.
+
+| Model | Best epoch | Validation loss ↓ | Occupied IoU ↑ | Room accuracy ↑ | Structural distance ↓ | Same bedroom count ↑ | Same bath count ↑ | Room count error ↓ |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| No BN | 14 | 0.9421 | 76.4% | 34.3% | 0.4965 | 32.5% | 39.0% | 3.77 |
+| BN | 11 | 0.9648 | 79.9% | 34.3% | 0.5021 | 31.2% | 38.3% | 3.90 |
+
+The always-Other room accuracy was 26.7%. BN improved occupied-area IoU and kitchen recall (8.5% to 14.2%), while bathroom recall dropped from 9.2% to 0.07%. The no-BN model was exported because it scored slightly better on the selected retrieval metric and the room-count measures. Mean structural distance was 0.5927 for random retrieval and 0.2042 for the annotation-based structural ranker, which directly optimizes that distance.
+
+In the visual review, validation plan 4850 and its top match 3974 appeared to be near-duplicates despite distinct IDs. Other displayed neighbours often shared the outline and differed in room types or positions. The comparison does not establish an advantage on distinct homes judged by architects. Neither connectivity nor a fresh independent test was evaluated.
+
+PyTorch and ONNX Runtime agreed on both outputs for batches of 1 and 4. The largest absolute differences were 1.91e-5 for codes and 2.67e-5 for decoder logits. Local tests exercised both endpoints through Gradio Client and plain HTTP, checked all five returned matches and their distances against the exported gallery, and verified PNG rendering and missing-annotation handling. The two full-sheet collection examples were used to verify preprocessing and row ordering. The API results are saved in api_validation.json in the run directory.

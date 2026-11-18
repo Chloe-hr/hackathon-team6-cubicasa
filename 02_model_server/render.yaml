@@ -9,3 +9,6 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python app.py
     healthCheckPath: /
+
+    # For an approved v4 rollout, make the complete bundle available on the host
+    # and set LAYOUT_BUNDLE_DIR to its directory in Render before restarting.

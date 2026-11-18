@@ -32,7 +32,7 @@ All 5,000 plans placed on a map by their codes and drawn as their rooms. Our fir
 
 ## Dataset
 
-[CubiCasa5K](https://zenodo.org/records/2613548): 5,000 floor-plan images, mostly of Finnish homes. Kalervo et al. (2019), SCIA. Licence CC BY-NC-SA 4.0: non-commercial use only, and what we publish from it keeps the same licence. The data isn't in this repository.
+[CubiCasa5K](https://zenodo.org/records/2613548): 5,000 floor-plan images, mostly of Finnish homes. Kalervo et al. (2019), SCIA. The dataset is CC BY-NC 4.0. [CubiCasa5K licence](https://github.com/CubiCasa/CubiCasa5k/blob/master/LICENSE). The data isn't in this repository.
 
 ## AI usage
 
@@ -47,4 +47,6 @@ Lessons learned: in two separate first tries we trained with MSE, like in class,
 
 ## Licence
 
-MIT for the code, see [LICENSE](LICENSE). The data, and the model trained on it, are CC BY-NC-SA 4.0.
+MIT for the code, see [LICENSE](LICENSE). CubiCasa5K is CC BY-NC 4.0. [CubiCasa5K licence](https://github.com/CubiCasa/CubiCasa5k/blob/master/LICENSE).
+
+See the [aligned model workflow](01_autoencoder/README.md#aligned-layout-model-v4) for the validation comparison and local export.
