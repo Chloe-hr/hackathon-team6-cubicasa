@@ -1,0 +1,16 @@
+{
+  "name": "hackathon-team6-cubicasa-app",
+  "private": true,
+  "description": "Team 6: a password-protected page that sends a floor plan to our model server, shows the five most similar plans and stores each search in D1 and R2",
+  "scripts": {
+    "db:local": "wrangler d1 execute hackathon-team6-db --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute hackathon-team6-db --remote --file=schema.sql",
+    "db:migrate:local": "wrangler d1 execute hackathon-team6-db --local --file=migrate_add_model.sql",
+    "db:migrate:remote": "wrangler d1 execute hackathon-team6-db --remote --file=migrate_add_model.sql",
+    "dev": "wrangler pages dev",
+    "deploy": "wrangler pages deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.156.1"
+  }
+}

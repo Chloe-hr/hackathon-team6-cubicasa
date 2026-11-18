@@ -1,0 +1,18 @@
+flowchart LR
+    U([Architect<br/>in a browser]) -->|HTTPS| P
+    subgraph CF[Cloudflare]
+        P[Pages<br/>index.html, login.html]
+        F[Pages Functions<br/>/api/login, /api/search,<br/>/api/history, /api/searches, /api/images]
+        D1[(D1 database<br/>table searches)]
+        R2[(R2 bucket<br/>uploads/, results/)]
+        S{{Secret<br/>APP_PASSWORD}}
+        P --> F
+        F --> D1
+        F --> R2
+        S -.-> F
+    end
+    F -->|POST /predict<br/>plan as base64| M
+    subgraph RE[Render, free plan]
+        M[Model server<br/>Gradio + ONNX Runtime]
+    end
+    HF[(Hugging Face<br/>iaac-maai/hackathon-team6-cubicasa-ae<br/>model, 5,000 codes, room maps)] -->|downloaded at start-up| M

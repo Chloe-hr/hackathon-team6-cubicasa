@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant P as Page (Cloudflare Pages)
+    participant F as Pages Functions (/api/...)
+    participant M as Model server (Render)
+    participant R2 as R2 bucket
+    participant D1 as D1 database
+    U->>P: open the app
+    P-->>U: login page (no cookie yet)
+    U->>F: POST /api/login (team password)
+    F-->>U: cookie with a hash of the password
+    U->>P: choose a floor plan, "Find similar plans"
+    P->>F: POST /api/search (the plan image)
+    F->>M: POST /gradio_api/call/predict (plan as base64)
+    Note over M: clean the plan<br/>encode: 128 numbers<br/>5 closest of 5,000
+    M-->>F: 5 matches (ids, distances, images, room maps)
+    F->>R2: store the uploaded plan and the full answer
+    F->>D1: INSERT one row into searches
+    F-->>P: the result (JSON)
+    P-->>U: your plan, its rooms and the 5 similar plans
+    P->>F: GET /api/history
+    F->>D1: SELECT the 20 latest searches
+    F-->>P: past searches (thumbnails from R2)

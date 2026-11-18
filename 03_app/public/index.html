@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plan precedents · Team 6</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header class="top">
+      <div>
+        <h1>Plan precedents</h1>
+        <p>Upload a floor plan. Our model finds the five most similar homes out of the 5,000 plans of CubiCasa5K.</p>
+      </div>
+      <form method="post" action="/api/logout"><button class="quiet" type="submit">Log out</button></form>
+    </header>
+
+    <section class="card">
+      <h2>1 · Choose the neural network</h2>
+      <div class="tabs" role="tablist" aria-label="Neural network">
+        <button type="button" role="tab" class="tab" data-model="v1" aria-selected="false">v1 · plain autoencoder</button>
+        <button type="button" role="tab" class="tab" data-model="v2" aria-selected="false">v2 · cleaned lines</button>
+        <button type="button" role="tab" class="tab" data-model="v3" aria-selected="true">v3 · rooms <span class="rec">Recommended</span></button>
+      </div>
+      <p id="model-about" class="about-model"></p>
+
+      <h2 class="step">2 · Upload a plan</h2>
+      <form id="upload">
+        <input id="plan" name="plan" type="file" accept="image/png,image/jpeg" required>
+        <button id="send" type="submit">Find similar plans</button>
+      </form>
+      <p id="status"></p>
+    </section>
+
+    <section id="result" class="card" hidden>
+      <div class="query">
+        <figure>
+          <img id="query-plan" alt="The uploaded plan">
+          <figcaption>Your plan</figcaption>
+        </figure>
+        <figure>
+          <img id="query-model" class="pixel" alt="">
+          <figcaption id="query-model-caption"></figcaption>
+        </figure>
+        <div class="about">
+          <span id="result-model" class="badge"></span>
+          <h2>Five most similar plans</h2>
+          <p id="query-when"></p>
+          <ul id="legend" class="legend"></ul>
+        </div>
+      </div>
+      <div id="matches" class="matches"></div>
+      <p class="note">Click a plan to see it larger. Distance between the codes of the two plans: smaller = more similar
+        (distances of different networks can't be compared). Match images are the plans as stored in the collection
+        (128 px) and their rooms from the CubiCasa5K annotations.</p>
+    </section>
+
+    <section class="card">
+      <h2>Past searches</h2>
+      <p>Stored in the D1 database and R2: they are still here after a reload. Click "Open" to see a search again.</p>
+      <table>
+        <thead><tr><th>Plan</th><th>When (UTC)</th><th>Network</th><th>File</th><th>Most similar</th><th>Distance</th><th></th></tr></thead>
+        <tbody id="history"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- The large view of one match -->
+  <div id="viewer" class="viewer" hidden>
+    <div class="viewer-box" role="dialog" aria-modal="true" aria-labelledby="viewer-title">
+      <div class="viewer-head">
+        <h2 id="viewer-title"></h2>
+        <button id="viewer-close" class="quiet" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="viewer-images">
+        <figure><img id="viewer-plan" alt="The plan"><figcaption>The plan as drawn</figcaption></figure>
+        <figure><img id="viewer-rooms" class="pixel" alt="Its rooms"><figcaption id="viewer-rooms-caption">Its rooms (annotations)</figcaption></figure>
+      </div>
+      <div class="viewer-nav">
+        <button id="viewer-prev" class="quiet" type="button">← Previous</button>
+        <span id="viewer-count"></span>
+        <button id="viewer-next" class="quiet" type="button">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---- The three networks the user can choose -------------------------------
+    const MODELS = {
+      v1: { label: "v1 · plain autoencoder", query: "How the model redraws your plan",
+            about: "Compares the plans exactly as drawn. Fast and simple, but faint scans and bold drawings end up apart even when the layout is the same." },
+      v2: { label: "v2 · cleaned lines", query: "How the model redraws your plan (cleaned)",
+            about: "Cleans every plan down to its thin lines first, so the drawing style counts less and the overall shape counts more." },
+      v3: { label: "v3 · rooms", query: "The rooms the model sees in your plan",
+            about: "Recommended. Trained to recognise the rooms: matches tend to share the room layout (bedrooms, living room, kitchen), not only the outline. Use v1 or v2 to compare." },
+    };
+    let model = "v3";
+    const tabs = document.querySelectorAll(".tab");
+    function chooseModel(key) {
+      model = key;
+      tabs.forEach((t) => t.setAttribute("aria-selected", String(t.dataset.model === key)));
+      document.getElementById("model-about").textContent = MODELS[key].about;
+    }
+    tabs.forEach((t) => t.addEventListener("click", () => chooseModel(t.dataset.model)));
+    chooseModel(model);
+
+    // ---- Search ---------------------------------------------------------------
+    const form = document.getElementById("upload");
+    const statusLine = document.getElementById("status");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const file = document.getElementById("plan").files[0];
+      if (!file) return;
+      document.getElementById("send").disabled = true;
+      statusLine.className = "";
+      statusLine.textContent = `Searching with ${MODELS[model].label}…`;
+      // A free Render server sleeps after 15 minutes. If the answer is slow, say why instead of looking stuck
+      const slow = setTimeout(() => {
+        statusLine.className = "waking";
+        statusLine.textContent = "The model is waking up, about one minute. Your search will continue by itself.";
+      }, 4000);
+
+      try {
+        const body = new FormData();
+        body.append("plan", file);
+        body.append("model", model);
+        let response, result;
+        for (let attempt = 1; attempt <= 4; attempt++) {
+          response = await fetch("/api/search", { method: "POST", body });
+          result = await response.json();
+          if (!(response.status === 503 && result.waking)) break;
+          clearTimeout(slow);
+          statusLine.className = "waking";
+          statusLine.textContent = `The model is waking up, about one minute. Trying again (${attempt}/3)…`;
+          await new Promise((r) => setTimeout(r, 10000));
+        }
+        if (!response.ok) throw new Error(result.waking
+          ? "The model is still waking up. Please try again in a minute." : (result.error || response.statusText));
+        showResult(result, URL.createObjectURL(file));
+        statusLine.className = "";
+        statusLine.textContent = "Saved.";
+        loadHistory();
+      } catch (error) {
+        statusLine.className = "error";
+        statusLine.textContent = error.message;
+      } finally {
+        clearTimeout(slow);
+        document.getElementById("send").disabled = false;
+      }
+    });
+
+    // ---- Show a result (new or from the history) -------------------------------
+    let shownMatches = [];
+    function showResult(result, planSrc) {
+      const key = result.model_version in MODELS ? result.model_version : "v3";
+      document.getElementById("result-model").textContent = MODELS[key].label;
+      document.getElementById("query-plan").src = planSrc;
+      // v3 answers with the rooms it sees; v1 and v2 with how they redraw the plan. Older searches only have rooms.
+      const queryImage = result.query_png_base64 || result.rooms_png_base64;
+      document.getElementById("query-model").src = "data:image/png;base64," + queryImage;
+      document.getElementById("query-model").alt = MODELS[key].query;
+      document.getElementById("query-model-caption").textContent = MODELS[key].query;
+      document.getElementById("query-when").textContent =
+        (result.file_name ? result.file_name + " · " : "") + result.created_at.replace("T", " ").slice(0, 16) + " UTC";
+
+      const legend = document.getElementById("legend");
+      legend.innerHTML = "";
+      for (const [name, colour] of Object.entries(result.room_colours || {})) {
+        const li = document.createElement("li");
+        const swatch = document.createElement("span");
+        swatch.style.background = colour;
+        li.append(swatch, document.createTextNode(name.replace(/([a-z])([A-Z])/g, "$1 $2")));
+        legend.appendChild(li);
+      }
+
+      shownMatches = result.matches;
+      const matches = document.getElementById("matches");
+      matches.innerHTML = "";
+      result.matches.forEach((m, index) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "match";
+        card.title = "See it larger";
+        const plan = new Image();
+        plan.src = "data:image/png;base64," + m.image_png_base64;
+        plan.alt = "Similar plan " + m.id;
+        card.appendChild(plan);
+        if (m.rooms_png_base64) {
+          const rooms = new Image();
+          rooms.src = "data:image/png;base64," + m.rooms_png_base64;
+          rooms.alt = "Its rooms";
+          rooms.className = "pixel";
+          card.appendChild(rooms);
+        } else {
+          const none = document.createElement("div");
+          none.className = "no-rooms";
+          none.textContent = "No room annotation";
+          card.appendChild(none);
+        }
+        const caption = document.createElement("span");
+        caption.className = "caption";
+        caption.innerHTML = `<strong>#${m.rank}</strong> · distance ${m.distance.toFixed(1)}<br><span></span>`;
+        caption.querySelector("span").textContent = "plan " + m.id.split("/").pop();
+        card.appendChild(caption);
+        card.addEventListener("click", () => openViewer(index));
+        matches.appendChild(card);
+      });
+      document.getElementById("result").hidden = false;
+    }
+
+    // ---- The large view ---------------------------------------------------------
+    const viewer = document.getElementById("viewer");
+    let viewerIndex = 0;
+    let lastFocus = null;
+    function openViewer(index) {
+      lastFocus = document.activeElement;
+      viewerIndex = index;
+      renderViewer();
+      viewer.hidden = false;
+      document.getElementById("viewer-close").focus();
+    }
+    function renderViewer() {
+      const m = shownMatches[viewerIndex];
+      document.getElementById("viewer-title").textContent =
+        `#${m.rank} · plan ${m.id.split("/").pop()} · distance ${m.distance.toFixed(1)}`;
+      document.getElementById("viewer-plan").src = "data:image/png;base64," + m.image_png_base64;
+      const rooms = document.getElementById("viewer-rooms");
+      rooms.hidden = !m.rooms_png_base64;
+      if (m.rooms_png_base64) rooms.src = "data:image/png;base64," + m.rooms_png_base64;
+      document.getElementById("viewer-rooms-caption").textContent =
+        m.rooms_png_base64 ? "Its rooms (CubiCasa5K annotations)" : "No room annotation for this plan";
+      document.getElementById("viewer-count").textContent = `${viewerIndex + 1} of ${shownMatches.length}`;
+    }
+    function moveViewer(step) {
+      viewerIndex = (viewerIndex + step + shownMatches.length) % shownMatches.length;
+      renderViewer();
+    }
+    function closeViewer() {
+      viewer.hidden = true;
+      if (lastFocus) lastFocus.focus();
+    }
+    document.getElementById("viewer-close").addEventListener("click", closeViewer);
+    document.getElementById("viewer-prev").addEventListener("click", () => moveViewer(-1));
+    document.getElementById("viewer-next").addEventListener("click", () => moveViewer(1));
+    viewer.addEventListener("click", (event) => { if (event.target === viewer) closeViewer(); });
+    document.addEventListener("keydown", (event) => {
+      if (viewer.hidden) return;
+      if (event.key === "Escape") closeViewer();
+      if (event.key === "ArrowLeft") moveViewer(-1);
+      if (event.key === "ArrowRight") moveViewer(1);
+    });
+
+    // ---- Past searches ------------------------------------------------------------
+    async function openSearch(id) {
+      statusLine.className = "";
+      statusLine.textContent = "Loading the saved search…";
+      const response = await fetch(`/api/searches/${id}`);
+      const result = await response.json();
+      if (!response.ok) {
+        statusLine.className = "error";
+        statusLine.textContent = result.error || response.statusText;
+        return;
+      }
+      showResult(result, `/api/images/${id}`);
+      statusLine.textContent = "";
+      document.getElementById("result").scrollIntoView({ behavior: "smooth" });
+    }
+
+    async function loadHistory() {
+      const response = await fetch("/api/history");
+      const rows = await response.json();
+      const tbody = document.getElementById("history");
+      tbody.innerHTML = "";
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">No searches yet.</td></tr>`;
+      }
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><img src="/api/images/${row.id}" alt=""></td><td></td><td></td><td></td><td></td><td></td>
+          <td><button class="quiet" type="button">Open</button></td>`;
+        // textContent: a file name can't inject HTML
+        tr.children[1].textContent = row.created_at.replace("T", " ").slice(0, 16);
+        tr.children[2].textContent = (MODELS[row.model] || MODELS.v3).label;
+        tr.children[3].textContent = row.file_name || "";
+        tr.children[4].textContent = "plan " + row.best_id.split("/").pop();
+        tr.children[5].textContent = row.best_distance.toFixed(1);
+        tr.querySelector("button").addEventListener("click", () => openSearch(row.id));
+        tbody.appendChild(tr);
+      }
+    }
+
+    loadHistory();
+    fetch("/api/wake"); // start waking the model server now, while the user picks a plan
+  </script>
+</body>
+</html>

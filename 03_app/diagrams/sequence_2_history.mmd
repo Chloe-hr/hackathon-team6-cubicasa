@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant P as Page (Cloudflare Pages)
+    participant F as Pages Functions (/api/...)
+    participant D1 as D1 database
+    participant R2 as R2 bucket
+    U->>P: open the app (already logged in: cookie)
+    P->>F: GET /api/history
+    F->>D1: SELECT the 20 latest searches
+    D1-->>F: rows (date, file, best match, distance)
+    F-->>P: past searches (JSON)
+    P->>F: GET /api/images/<id> (one per row)
+    F->>R2: read the uploaded plan
+    R2-->>F: image
+    F-->>P: thumbnail
+    P-->>U: table of past searches
+    U->>P: click "Open" on a past search
+    P->>F: GET /api/searches/<id>
+    F->>D1: SELECT the row (where its answer is stored)
+    F->>R2: read results/<id>.json
+    R2-->>F: the stored answer (5 matches, images, room maps)
+    F-->>P: the past search again
+    P-->>U: the plan and its 5 similar plans, no new call to the model

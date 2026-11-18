@@ -11,7 +11,7 @@ import onnxruntime as ort
 from huggingface_hub import hf_hub_download
 from PIL import Image
 
-from preprocessing import preprocess
+from preprocessing import clean_plan, drawing_array, preprocess
 
 HERE = Path(__file__).parent
 HF_REPO = "iaac-maai/hackathon-team6-cubicasa-ae"
@@ -69,6 +69,24 @@ if code_probe.shape != (1, CODES.shape[1]) or room_probe.shape != (1, len(CLASSE
     raise ValueError("ONNX output shapes disagree with the gallery configuration")
 
 
+# ---- The other versions of the model, so the app can let the user choose -------
+# Each version has its own ONNX file and its own codes of the 5,000 plans; the plans and room maps are shared.
+# v1 was trained on the plans as drawn (no cleaning), v2 and v3 on the cleaned plans.
+MODELS = {MODEL_VERSION: {"session": session, "codes": CODES, "atlas": ATLAS, "clean": True, "output": "rooms",
+                          "label": "v3 · rooms" if MODEL_VERSION == "v3" else MODEL_VERSION}}
+if not BUNDLE_DIR:
+    for key, onnx_name, codes_name, atlas_name, clean, label in [
+        ("v1", "floorplan_ae.onnx", "collection_codes.npy", None, False, "v1 · plain autoencoder"),
+        ("v2", "floorplan_ae_v2.onnx", "collection_codes_v2.npy", "atlas_v2_xy.npy", True, "v2 · cleaned lines"),
+    ]:
+        extra_codes = np.load(model_file(codes_name))
+        if extra_codes.shape != CODES.shape or not np.isfinite(extra_codes).all():
+            raise ValueError(f"Invalid codes for {key}")
+        MODELS[key] = {"session": ort.InferenceSession(model_file(onnx_name), providers=["CPUExecutionProvider"]),
+                       "codes": extra_codes, "atlas": np.load(model_file(atlas_name)) if atlas_name else None,
+                       "clean": clean, "output": "reconstruction", "label": label}
+
+
 def to_image(array):
     # Walls bright (the model's view) -> dark lines on white, as a drawing is usually shown
     return Image.fromarray(255 - (np.clip(array, 0, 1) * 255).astype(np.uint8))
@@ -86,6 +104,22 @@ def search(image: Image.Image):
     nearest = np.argsort(distances, kind="stable")[:TOP_K]
     predicted_rooms = output[0, :len(CLASSES)].argmax(axis=0)
     return nearest, distances[nearest], x[0, 0], predicted_rooms
+
+
+def search_with(image: Image.Image, key: str):
+    # Same search as above, with the version of the model the user chose
+    model = MODELS[key]
+    drawing = drawing_array(image, SIZE)
+    plan = clean_plan(drawing) if model["clean"] else drawing
+    x = (plan.astype(np.float32) / 255.0)[None, None]
+    code, output = model["session"].run(None, {"image": x})
+    distances = np.linalg.norm(model["codes"] - code[0], axis=1)
+    nearest = np.argsort(distances, kind="stable")[:TOP_K]
+    if model["output"] == "rooms":
+        query_image = rooms_image(output[0, :len(CLASSES)].argmax(axis=0))   # the rooms the model sees
+    else:
+        query_image = to_image(output[0, 0])                                 # how the model redraws the plan
+    return nearest, distances[nearest], query_image
 
 
 def png_base64(image: Image.Image):
@@ -139,6 +173,30 @@ def predict(image_b64: str) -> dict:
     }
 
 
+def predict_model(image_b64: str, model: str = "v3") -> dict:
+    """Like /predict, but with the version of the model you choose: "v1" (plain autoencoder), "v2" (cleaned lines) or "v3" (rooms). Send a base64-encoded PNG or JPEG and the version."""
+    if model not in MODELS:
+        raise gr.Error(f"Unknown model {model!r}. Choose one of: {', '.join(sorted(MODELS))}.")
+    nearest, distances, query_image = search_with(read_image(image_b64), model)
+    atlas = MODELS[model]["atlas"]
+    return {
+        "model_version": model,
+        "model_label": MODELS[model]["label"],
+        "matches": [{"rank": rank, "id": IDS[i], "distance": round(float(d), 2),
+                     "atlas_xy": [round(float(v), 4) for v in atlas[i]] if atlas is not None else None,
+                     "image_png_base64": png_base64(to_image(PLANS[i] / 255.0)),
+                     "has_rooms": bool(HAS_ROOMS[i]),
+                     "rooms_png_base64": png_base64(rooms_image(ROOMS[i])) if HAS_ROOMS[i] else None}
+                    for rank, (i, d) in enumerate(zip(nearest, distances), start=1)],
+        "atlas_xy": [round(float(v), 4) for v in atlas[nearest].mean(axis=0)] if atlas is not None else None,
+        # v3: the rooms the model sees in the uploaded plan; v1 and v2: how the model redraws it
+        "query_kind": MODELS[model]["output"],
+        "query_png_base64": png_base64(query_image),
+        "rooms_png_base64": png_base64(query_image) if MODELS[model]["output"] == "rooms" else None,
+        "room_colours": {name: colour for name, colour in zip(CLASSES[1:], CONFIG["room_colours"][1:])},
+    }
+
+
 legend = " ".join(f"<span style='background:{c};padding:1px 6px;margin-right:4px'>&nbsp;</span>{name}"
                   for name, c in zip(CLASSES[1:], CONFIG["room_colours"][1:]))
 
@@ -165,6 +223,7 @@ with gr.Blocks(title="Floor-plan similarity search") as demo:
                  api_visibility="private")
     gr.api(predict, api_name="predict")
     gr.api(embed, api_name="embed")
+    gr.api(predict_model, api_name="predict_model")
 
 if __name__ == "__main__":
     # Render tells the app which port to use in the PORT variable; locally it is 7860
