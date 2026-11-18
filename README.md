@@ -21,7 +21,7 @@ All 5,000 plans placed on a map by their codes and drawn as their rooms. Our fir
 
 You choose one of the three networks and upload a plan. Your plan and the five closest homes come back on sheets side by side, each drawing next to its rooms; the room key keeps only one room type on every map. Below them, Look inside shows what the network computed: where your plan lands among the 5,000, how close the five are against all the others, and what each layer sees. All of it comes from the same ONNX file the server runs.
 
-![The app in six screens: the 5,000 plans before a search, your plan next to the five closest homes, only the bedrooms kept on every room map, the map shaded by distance to your plan, the same map zoomed to your plan with the plans drawn, and every layer of the network](docs/images/tour.gif)
+![The app in six screens: the 5,000 plans before a search, your plan next to the five closest homes, only the bedrooms kept on every room map, the map shaded by distance to your plan, the same map zoomed to your plan with the plans drawn, and every layer of the network](docs/images/app_tour.gif)
 
 ## How it works
 
