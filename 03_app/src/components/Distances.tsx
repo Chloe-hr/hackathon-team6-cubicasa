@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import type { Match } from "../api";
 import { median, ramp } from "../scale";
 
@@ -35,7 +35,7 @@ export function Distances({ distances, matches, hoverRank }: { distances: number
     <figure className="figure">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Histogram of the distances to the 5,000 plans. Median ${mid.toFixed(1)}; the five matches are between ${first.toFixed(1)} and ${last.toFixed(1)}.`}>
         {bins.map((bar, i) => (
-          <rect key={i} x={x(bar.from) + 0.5} width={Math.max(0, x(max / BINS) - x(0) - 1)} y={y(bar.count)} height={H - M.bottom - y(bar.count)} fill={ramp(bar.rank)} />
+          <rect key={i} style={{ "--i": i } as CSSProperties} x={x(bar.from) + 0.5} width={Math.max(0, x(max / BINS) - x(0) - 1)} y={y(bar.count)} height={H - M.bottom - y(bar.count)} fill={ramp(bar.rank)} />
         ))}
         <line className="axis" x1={M.left} x2={W - M.right} y1={H - M.bottom} y2={H - M.bottom} />
         {ticks.map((t) => (

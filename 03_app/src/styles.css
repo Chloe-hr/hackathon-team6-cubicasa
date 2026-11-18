@@ -206,7 +206,8 @@ canvas {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton {
+  .skeleton,
+  .results .match {
     animation: none;
   }
 
@@ -240,11 +241,15 @@ canvas {
   white-space: nowrap;
 }
 
+/* the team line is a caption of the name, not one more tab */
 .product span {
-  margin-left: 10px;
-  color: var(--band-ink-2);
-  font-size: 0.8125rem;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid var(--rule);
+  color: var(--ink-3);
+  font-size: 0.75rem;
   font-weight: 400;
+  font-variation-settings: "wdth" 100;
 }
 
 .bar nav {
@@ -940,6 +945,174 @@ canvas {
   vector-effect: non-scaling-stroke;
 }
 
+/* ---- Cover: the page before a search, the collection as a plate ---- */
+
+.upload.strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  grid-template-areas: "title title" "networks drop" "examples action" "status status";
+  gap: 12px 28px;
+  align-items: start;
+}
+
+.upload.strip h2 {
+  grid-area: title;
+  font-size: 1.5rem;
+}
+
+.upload.strip .networks {
+  display: grid;
+  grid-area: networks;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.upload.strip .networks legend {
+  grid-column: 1 / -1;
+}
+
+.upload.strip .drop {
+  grid-area: drop;
+  min-height: 120px;
+}
+
+.upload.strip .drop img {
+  max-height: 104px;
+}
+
+.upload.strip .file-name {
+  display: none;
+}
+
+.upload.strip .primary {
+  grid-area: action;
+}
+
+.upload.strip .examples {
+  grid-area: examples;
+}
+
+.upload.strip .status {
+  grid-area: status;
+}
+
+.cover-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 48px;
+  margin: 64px 0 20px;
+}
+
+.cover-head h1 {
+  font-size: 5.5rem;
+  font-weight: 700;
+  font-variation-settings: var(--condensed);
+  letter-spacing: -0.035em;
+  line-height: 0.88;
+}
+
+.cover-head .muted {
+  max-width: 56ch;
+  padding-bottom: 6px;
+  font-size: 1rem;
+}
+
+.cover .room-key {
+  margin: 0 0 14px;
+}
+
+/* ---- Tracing paper: your plan over a match ---- */
+
+.trace-stack {
+  position: relative;
+  aspect-ratio: 1;
+  border: 1px solid var(--rule);
+  background: #fff;
+}
+
+.detail-images .trace-stack img,
+.detail-images .trace-stack canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.trace-stack canvas {
+  image-rendering: auto;
+  mix-blend-mode: multiply;
+}
+
+.trace-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: 0.75rem;
+}
+
+.trace-control input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--course);
+}
+
+.trace-control span {
+  min-width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Motion: each tied to something that happens ---- */
+
+/* the five homes come up one by one when the answer arrives */
+.results .match {
+  animation: rise 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 150ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+}
+
+/* a section slides in the first time it scrolls into view (src/reveal.ts) */
+[data-shown] {
+  transition: opacity 900ms cubic-bezier(0.16, 1, 0.3, 1), transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-shown="false"] {
+  opacity: 0;
+  transform: translateY(36px);
+}
+
+/* the layers appear left to right, in the order the plan goes through the network */
+.figure-sheet[data-shown] .layer {
+  transition: opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--i) * 90ms + 150ms);
+}
+
+.figure-sheet[data-shown="false"] .layer {
+  opacity: 0;
+  transform: translateY(18px);
+}
+
+/* the histogram grows from zero */
+.figure-sheet[data-shown] .figure svg rect {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transition: transform 800ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--i) * 14ms + 250ms);
+}
+
+.figure-sheet[data-shown="false"] .figure svg rect {
+  transform: scaleY(0);
+}
+
 /* ---- Colophon: the close of the page, as in a book ---- */
 
 .colophon {
@@ -1098,6 +1271,23 @@ tbody tr:hover {
 }
 
 @media (max-width: 800px) {
+  .upload.strip {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "networks" "drop" "examples" "action" "status";
+  }
+
+  .upload.strip .networks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cover-head {
+    margin-top: 40px;
+  }
+
+  .cover-head h1 {
+    font-size: 3.5rem;
+  }
+
   .inside-grid {
     grid-template-columns: minmax(0, 1fr);
   }

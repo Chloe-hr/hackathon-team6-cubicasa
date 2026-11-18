@@ -2,6 +2,7 @@ import { MODELS, type Atlas as AtlasData, type Explain, type SearchResult } from
 import { Atlas } from "./Atlas";
 import { Distances } from "./Distances";
 import { Layers } from "./Layers";
+import { useReveal } from "../reveal";
 
 interface Props {
   result: SearchResult;
@@ -12,11 +13,15 @@ interface Props {
   atlas: AtlasData | null;
   hoverRank: number | null;
   setHoverRank: (rank: number | null) => void;
+  focusRoom: string | null;
 }
 
 // What the network computed for this search: where the plan lands, how close the five are, what each layer sees
-export function LookInside({ result, uploadedUrl, explain, explainError, retryExplain, atlas, hoverRank, setHoverRank }: Props) {
+export function LookInside({ result, uploadedUrl, explain, explainError, retryExplain, atlas, hoverRank, setHoverRank, focusRoom }: Props) {
   const model = result.model;
+  const mapSheet = useReveal<HTMLElement>();
+  const distanceSheet = useReveal<HTMLElement>();
+  const layerSheet = useReveal<HTMLElement>();
   const waiting = !explain && !explainError;
 
   return (
@@ -32,11 +37,12 @@ export function LookInside({ result, uploadedUrl, explain, explainError, retryEx
       </div>
 
       <div className="inside-grid">
-        <section className="sheet figure-sheet" aria-labelledby="map-title">
+        <section className="sheet figure-sheet" aria-labelledby="map-title" ref={mapSheet}>
           <h3 id="map-title">Where your plan lands among the 5,000</h3>
           {atlas ? (
             <Atlas atlas={atlas} model={model} distances={explain?.distances ?? null} matches={result.matches}
               uploadedUrl={uploadedUrl} hoverRank={hoverRank} setHoverRank={setHoverRank} introKey={result.id} initialMode="dots"
+              focusRoom={focusRoom} colours={result.room_colours}
               label={`Map of the 5,000 plans for ${model}, with your plan and its five matches`} />
           ) : (
             <div className="skeleton square" />
@@ -50,13 +56,13 @@ export function LookInside({ result, uploadedUrl, explain, explainError, retryEx
           </p>
         </section>
 
-        <section className="sheet figure-sheet" aria-labelledby="distance-title">
+        <section className="sheet figure-sheet" aria-labelledby="distance-title" ref={distanceSheet}>
           <h3 id="distance-title">How close the five are</h3>
           {explain ? <Distances distances={explain.distances} matches={result.matches} hoverRank={hoverRank} /> : <div className="skeleton chart" />}
         </section>
       </div>
 
-      <section className="sheet figure-sheet" aria-labelledby="layers-title">
+      <section className="sheet figure-sheet" aria-labelledby="layers-title" ref={layerSheet}>
         <h3 id="layers-title">What each layer sees</h3>
         {explain ? <Layers steps={explain.steps} /> : <div className="skeleton strip" />}
         <p className="reading">

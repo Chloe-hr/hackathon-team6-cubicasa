@@ -62,6 +62,7 @@ export interface Atlas {
   tile: number; // the plan drawings: tile px, tiles per row and per sheet in /data/plans_<n>.webp
   cols: number;
   per_sheet: number;
+  has_rooms: string; // "1" or "0" per plan: whether CubiCasa5K annotates its rooms
   v1: number[];
   v2: number[];
   v3: number[];
@@ -112,5 +113,11 @@ export async function untilAwake<T>(call: () => Promise<T>, onWait: (attempt: nu
     }
   }
 }
+
+// The room types and colours of the server (floorplan_ae_v3_config.json), for the page before any search
+export const ROOM_COLOURS: Record<string, string> = {
+  Bedroom: "#4477aa", Bath: "#66ccee", Sauna: "#228833", Kitchen: "#ccbb44", LivingRoom: "#ee6677",
+  Dining: "#aa3377", Circulation: "#bbbbbb", Storage: "#ddaa33", Garage: "#009988", Other: "#9999cc",
+};
 
 export const roomName = (name: string) => (name === "LivingRoom" ? "Living room" : name);

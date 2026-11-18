@@ -4,12 +4,14 @@ import { LEVELS, levelColours, ranks } from "../scale";
 
 // The 5,000 plans on the UMAP map of one network's codes. Drag to move, pinch or double-click to zoom.
 // Zoomed in, the "Plans" view replaces each dot with the drawing itself, one plan per cell, like the
-// atlas figure of the notebook. After a search the map plays the search once: the plans light up from
+// atlas figure of the notebook; "Rooms" shows the room maps of the annotations instead, and the room key
+// keeps one room type on all of them. After a search the map plays the search once: the plans light up from
 // the closest to the farthest, then it flies to your plan.
 
 type View = { x: number; y: number; k: number }; // centre of the view in map units (0-1) and zoom (1 = all)
-type Mode = "dots" | "plans";
-type Key = "wave" | "rings" | "plans" | "morph";
+type Mode = "dots" | "plans" | "rooms";
+type Kind = "plans" | "rooms";
+type Key = "wave" | "rings" | "plans" | "morph" | "land";
 type Tween = { from: number | View; to: number | View; start: number; ms: number; ease: (t: number) => number; done: () => void };
 
 const PAD = 18;
@@ -23,16 +25,43 @@ const easeInOut = (t: number) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 /
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-// The drawings: 1,024 plans of 64 px per sheet, shared by every map on the page and loaded on first use
-const sheets: HTMLImageElement[] = [];
-function loadSheets(count: number, onLoad: () => void) {
+// The drawings and the room maps: 1,024 plans of 64 px per sheet, shared by every map on the page, loaded on first use
+const sheets: Record<Kind, HTMLImageElement[]> = { plans: [], rooms: [] };
+function loadSheets(kind: Kind, count: number, onLoad: () => void) {
+  const list = sheets[kind];
   for (let i = 0; i < count; i++) {
-    if (!sheets[i]) {
-      sheets[i] = new Image();
-      sheets[i].src = `/data/plans_${i}.webp`;
+    if (!list[i]) {
+      list[i] = new Image();
+      list[i].src = kind === "plans" ? `/data/plans_${i}.webp` : `/data/rooms_${i}.png`;
     }
-    if (!sheets[i].complete) sheets[i].addEventListener("load", onLoad, { once: true });
+    if (!list[i].complete) list[i].addEventListener("load", onLoad, { once: true });
   }
+}
+
+// A room sheet with every room but one faded, as on the room maps of the sheets; made once per room type
+const faded = new Map<string, HTMLCanvasElement>();
+function roomSheet(i: number, hex: string | null) {
+  const sheet = sheets.rooms[i];
+  if (!sheet?.complete || !hex) return sheet?.complete ? sheet : null;
+  const key = `${i}:${hex}`;
+  if (!faded.has(key)) {
+    const canvas = document.createElement("canvas");
+    canvas.width = sheet.width;
+    canvas.height = sheet.height;
+    const context = canvas.getContext("2d")!;
+    context.drawImage(sheet, 0, 0);
+    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+    const data = image.data;
+    const keep = parseInt(hex.slice(1), 16);
+    for (let p = 0; p < data.length; p += 4) {
+      const colour = (data[p] << 16) | (data[p + 1] << 8) | data[p + 2];
+      if (colour === keep || colour === 0xffffff) continue;
+      for (let c = 0; c < 3; c++) data[p + c] = Math.round(data[p + c] + (255 - data[p + c]) * 0.86);
+    }
+    context.putImageData(image, 0, 0);
+    faded.set(key, canvas);
+  }
+  return faded.get(key)!;
 }
 
 interface Props {
@@ -46,9 +75,13 @@ interface Props {
   introKey?: string; // a new key plays the search once, when the map comes into view
   initialMode: Mode;
   label: string;
+  focusRoom?: string | null; // the room type chosen in the room key
+  colours?: Record<string, string>;
+  tall?: boolean; // a wide plate: starts a little zoomed in, so the plans fill the width
 }
 
-export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank, setHoverRank, introKey, initialMode, label }: Props) {
+export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank, setHoverRank, introKey, initialMode, label,
+  focusRoom = null, colours = {}, tall = false }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 600, h: 480 });
@@ -58,10 +91,11 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
 
   // Everything the drawing reads lives in one ref, so animation frames never see stale React state
   const s = useRef({
-    view: { ...WHOLE } as View,
-    wave: 1, rings: 1, morph: 1,
-    plans: initialMode === "plans" ? 1 : 0,
+    view: { ...WHOLE, k: tall ? 1.4 : 1 } as View,
+    wave: 1, rings: 1, morph: 1, land: 1,
+    plans: initialMode === "dots" ? 0 : 1,
     mode: initialMode,
+    kind: (initialMode === "rooms" ? "rooms" : "plans") as Kind, // which sheets the tiles show, kept while they fade out
     hover: null as number | null,
     tiles: [] as { index: number; x: number; y: number; size: number }[],
     tweens: new Map<Key | "view", Tween>(),
@@ -87,8 +121,9 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
   const indexOf = useMemo(() => new Map(atlas.ids.map((id, i) => [id, i])), [atlas]);
   const matchIndex = useMemo(() => matches.map((m) => indexOf.get(m.id) ?? -1), [matches, indexOf]);
 
-  const live = useRef({ size, scale, matchIndex, matches });
-  live.current = { size, scale, matchIndex, matches };
+  const focusHex = focusRoom ? colours[focusRoom] ?? null : null;
+  const live = useRef({ size, scale, matchIndex, matches, focusHex });
+  live.current = { size, scale, matchIndex, matches, focusHex };
 
   // ---- animation ----------------------------------------------------------------------
   function requestDraw() {
@@ -135,8 +170,11 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
   function showMode(next: Mode) {
     s.mode = next;
     setMode(next);
-    if (next === "plans") loadSheets(Math.ceil(n / atlas.per_sheet), requestDraw);
-    tween("plans", next === "plans" ? 1 : 0, 380);
+    if (next !== "dots") {
+      s.kind = next;
+      loadSheets(next, Math.ceil(n / atlas.per_sheet), requestDraw);
+    }
+    tween("plans", next === "dots" ? 0 : 1, 380);
   }
 
   // ---- geometry -----------------------------------------------------------------------
@@ -224,6 +262,7 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
       const best = new Map<number, [number, number]>();
       const isMatch = new Set(mi);
       for (let i = 0; i < n; i++) {
+        if (s.kind === "rooms" && atlas.has_rooms[i] === "0") continue; // 8 plans have no room annotation
         const sx = ox + p[2 * i] * zoomPx;
         const sy = oy + p[2 * i + 1] * zoomPx;
         if (sx < -CELL * 2 || sy < -CELL * 2 || sx > w + CELL * 2 || sy > h + CELL * 2) continue;
@@ -269,7 +308,8 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
       });
       context.globalAlpha = s.rings;
       if (s.plans > 0.5 && s.you?.complete && s.tiles.length) {
-        const size = s.tiles[0].size * 1.2;
+        context.globalAlpha = s.rings * s.land;
+        const size = s.tiles[0].size * 1.2 * (1 + 0.9 * (1 - s.land)); // your plan lands on the map
         context.fillStyle = "#fff";
         context.fillRect(yx - size / 2, yy - size / 2, size, size);
         contain(context, s.you, yx - size / 2, yy - size / 2, size);
@@ -301,9 +341,10 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
   function plan(context: CanvasRenderingContext2D, index: number, x: number, y: number, size: number) {
     context.fillStyle = "#fff";
     context.fillRect(x, y, size, size);
-    const sheet = sheets[Math.floor(index / atlas.per_sheet)];
+    const i = Math.floor(index / atlas.per_sheet);
+    const sheet = s.kind === "rooms" ? roomSheet(i, live.current.focusHex) : sheets.plans[i]?.complete ? sheets.plans[i] : null;
     const j = index % atlas.per_sheet;
-    if (sheet?.complete) {
+    if (sheet) {
       context.drawImage(sheet, (j % atlas.cols) * atlas.tile, Math.floor(j / atlas.cols) * atlas.tile, atlas.tile, atlas.tile, x, y, size, size);
     }
     context.strokeStyle = "rgb(27 33 41 / 0.16)";
@@ -332,7 +373,7 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
       const w = Math.round(entry.contentRect.width);
-      setSize({ w, h: Math.round(clamp(w * 0.78, 320, 620)) });
+      setSize({ w, h: Math.round(tall ? clamp(w * 0.62, 360, 760) : clamp(w * 0.78, 320, 620)) });
     });
     observer.observe(box.current!);
     return () => observer.disconnect();
@@ -359,8 +400,14 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
   }, [uploadedUrl]);
 
   useEffect(() => {
-    if (initialMode === "plans") loadSheets(Math.ceil(n / atlas.per_sheet), requestDraw);
+    if (initialMode !== "dots") loadSheets(initialMode, Math.ceil(n / atlas.per_sheet), requestDraw);
   }, []);
+
+  // choosing a room type in the key shows the room maps, where it can be seen
+  useEffect(() => {
+    if (focusRoom && s.mode !== "rooms") showMode("rooms");
+    requestDraw();
+  }, [focusRoom]);
 
   // another network: the same 5,000 plans move to where that network puts them
   useEffect(() => {
@@ -378,21 +425,23 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
   // the search, played once when the map scrolls into view
   useEffect(() => {
     if (!introKey || !scale) return requestDraw();
-    Object.assign(s, { wave: 0, rings: 0, plans: 0, mode: "dots", view: { ...WHOLE } });
+    Object.assign(s, { wave: 0, rings: 0, plans: 0, land: 0, mode: "dots", view: { ...WHOLE } });
     setMode("dots");
     requestDraw();
     let cancelled = false;
     const observer = new IntersectionObserver(async ([entry]) => {
       if (!entry.isIntersecting) return;
       observer.disconnect();
-      loadSheets(Math.ceil(n / atlas.per_sheet), requestDraw);
+      loadSheets("plans", Math.ceil(n / atlas.per_sheet), requestDraw);
       await tween("wave", 1, 1900, easeInOut);
       await tween("rings", 1, 450);
-      if (cancelled || reducedMotion()) return;
+      if (cancelled || reducedMotion()) return void (s.land = 1);
       await new Promise((resolve) => setTimeout(resolve, 350));
       if (cancelled) return;
       await tween("view", neighbourhood(), 1400, easeInOut);
-      if (!cancelled) showMode("plans");
+      if (cancelled) return;
+      showMode(s.kind);
+      await tween("land", 1, 700);
     }, { threshold: 0.45 });
     observer.observe(box.current!);
     return () => {
@@ -507,6 +556,7 @@ export function Atlas({ atlas, model, distances, matches, uploadedUrl, hoverRank
         <div className="segmented" role="group" aria-label="Show the plans as">
           <button type="button" aria-pressed={mode === "dots"} onClick={() => showMode("dots")}>Dots</button>
           <button type="button" aria-pressed={mode === "plans"} onClick={() => showMode("plans")}>Plans</button>
+          <button type="button" aria-pressed={mode === "rooms"} onClick={() => showMode("rooms")}>Rooms</button>
         </div>
         <div className="segmented" role="group" aria-label="Zoom">
           <button type="button" aria-label="Zoom out" onClick={() => zoomAt(size.w / 2, size.h / 2, 0.5)}>

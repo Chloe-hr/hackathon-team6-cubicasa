@@ -11,10 +11,11 @@ interface Props {
   onSearch: () => void;
   busy: boolean;
   status: { text: string; tone: "info" | "waking" | "error" } | null;
+  strip?: boolean; // before a search: one wide strip above the collection
 }
 
 // Left sheet: choose the network, choose a plan, search
-export function Upload({ model, setModel, file, setFile, onSearch, busy, status }: Props) {
+export function Upload({ model, setModel, file, setFile, onSearch, busy, status, strip = false }: Props) {
   const [preview, setPreview] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -33,7 +34,7 @@ export function Upload({ model, setModel, file, setFile, onSearch, busy, status 
 
   return (
     <form
-      className="sheet upload"
+      className={strip ? "sheet upload strip" : "sheet upload"}
       onSubmit={(event) => {
         event.preventDefault();
         onSearch();

@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { api, ApiError, untilAwake, type Atlas as AtlasData, type Earlier, type Explain, type Model, type SavedSearch, type SearchResult } from "./api";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { api, ApiError, MODELS, ROOM_COLOURS, untilAwake, type Atlas as AtlasData, type Earlier, type Explain, type Model, type SavedSearch, type SearchResult } from "./api";
 import { Atlas } from "./components/Atlas";
 import { History } from "./components/History";
 import { Login } from "./components/Login";
 import { LookInside } from "./components/LookInside";
-import { Result } from "./components/Result";
+import { Result, RoomKey } from "./components/Result";
 import { Upload } from "./components/Upload";
 
 type Status = { text: string; tone: "info" | "waking" | "error" } | null;
@@ -28,6 +28,31 @@ export function App() {
   const [hoverRank, setHoverRank] = useState<number | null>(null);
   const [selectedRank, setSelectedRank] = useState<number | null>(null);
   const current = useRef<string | null>(null);
+  const flight = useRef<DOMRect | null>(null); // where your plan was on screen when you pressed search
+
+  // your plan flies from the upload box to its sheet next to the five matches
+  useLayoutEffect(() => {
+    const from = flight.current;
+    flight.current = null;
+    const target = document.querySelector<HTMLImageElement>(".yours .upload-image");
+    if (!from || !target || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    window.scrollTo({ top: 0 });
+    const to = target.getBoundingClientRect();
+    const ghost = target.cloneNode() as HTMLImageElement;
+    Object.assign(ghost.style, { position: "fixed", left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`,
+      height: `${to.height}px`, margin: "0", zIndex: "40", pointerEvents: "none", transformOrigin: "0 0" });
+    document.body.append(ghost);
+    target.style.visibility = "hidden";
+    const scale = Math.min(from.width / to.width, from.height / to.height);
+    ghost.animate([
+      { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${scale})`, boxShadow: "0 0 0 rgb(0 0 0 / 0)" },
+      { transform: `translate(${(from.left - to.left) / 3}px, ${(from.top - to.top) / 3 - 24}px) scale(${(scale + 1) / 2})`, boxShadow: "0 18px 40px rgb(27 33 41 / 0.22)", offset: 0.6 },
+      { transform: "none", boxShadow: "0 0 0 rgb(0 0 0 / 0)" },
+    ], { duration: 850, easing: "cubic-bezier(.16,1,.3,1)" }).finished.finally(() => {
+      target.style.visibility = "";
+      ghost.remove();
+    });
+  }, [shown?.result.id]);
 
   useEffect(() => {
     api("/api/session").then(() => setSession("in"), () => setSession("out"));
@@ -88,6 +113,7 @@ export function App() {
         () => api<SearchResult>("/api/search", { method: "POST", body }),
         (attempt) => setStatus({ text: `${WAKING} Trying again (${attempt}/3)…`, tone: "waking" }),
       );
+      flight.current = document.querySelector(".upload .drop img")?.getBoundingClientRect() ?? null;
       show(result, URL.createObjectURL(file));
       setStatus(null);
     } catch (err) {
@@ -133,37 +159,41 @@ export function App() {
           <History rows={history} error={historyError} onOpen={open} />
         ) : (
           <>
-            <h1 className="visually-hidden">Find similar floor plans</h1>
-            <div className="workspace">
-              <Upload model={model} setModel={setModel} file={file} setFile={setFile} onSearch={search} busy={busy} status={status} />
-              {shown ? (
-                <Result result={shown.result} uploadedUrl={shown.uploadedUrl} earlier={earlier} onOpen={open} focusRoom={focusRoom} setFocusRoom={setFocusRoom}
-                  hoverRank={hoverRank} setHoverRank={setHoverRank} selectedRank={selectedRank} setSelectedRank={setSelectedRank} />
-              ) : (
-                <section className="results empty" aria-labelledby="empty-title">
-                  <h2 id="empty-title">Five closest homes</h2>
+            {shown ? (
+              <>
+                <h1 className="visually-hidden">Find similar floor plans</h1>
+                <div className="workspace">
+                  <Upload model={model} setModel={setModel} file={file} setFile={setFile} onSearch={search} busy={busy} status={status} />
+                  <Result result={shown.result} uploadedUrl={shown.uploadedUrl} earlier={earlier} onOpen={open} focusRoom={focusRoom} setFocusRoom={setFocusRoom}
+                    hoverRank={hoverRank} setHoverRank={setHoverRank} selectedRank={selectedRank} setSelectedRank={setSelectedRank} />
+                </div>
+                <LookInside result={shown.result} uploadedUrl={shown.uploadedUrl} explain={explain} explainError={explainError} retryExplain={() => loadExplain(shown.result.id)}
+                  atlas={atlas} hoverRank={hoverRank} setHoverRank={setHoverRank} focusRoom={focusRoom} />
+              </>
+            ) : (
+              // before a search the page is a cover: the collection itself, as the chosen network arranges it
+              <section className="cover" aria-labelledby="cover-title">
+                <Upload model={model} setModel={setModel} file={file} setFile={setFile} onSearch={search} busy={busy} status={status} strip />
+                <div className="cover-head">
+                  <h1 id="cover-title">5,000 homes</h1>
                   <p className="muted">
-                    Choose a plan and a network. The five most similar of the 5,000 CubiCasa5K homes appear here, next to
-                    yours, with their rooms. Below them, the app shows what the network computed to find them.
+                    The plans of CubiCasa5K, arranged by {model} · {MODELS[model].name.toLowerCase()}: the network puts the plans it
+                    finds alike next to each other. Choose a plan above and the five closest to yours appear, with what the
+                    network computed to find them.
                   </p>
-                  <div className="sheet collection">
-                    {atlas ? (
-                      <Atlas atlas={atlas} model={model} distances={null} matches={[]} uploadedUrl={null} hoverRank={null}
-                        setHoverRank={() => {}} initialMode="plans" label={`The 5,000 plans of CubiCasa5K, arranged by ${model}`} />
-                    ) : (
-                      <div className="skeleton strip" />
-                    )}
-                    <p className="reading">
-                      The 5,000 homes of the collection, arranged by {model}: plans the network finds alike sit together.
-                      Choose another network and watch them move. Drag to look around, pinch or double-click to zoom.
-                    </p>
-                  </div>
-                </section>
-              )}
-            </div>
-            {shown && (
-              <LookInside result={shown.result} uploadedUrl={shown.uploadedUrl} explain={explain} explainError={explainError} retryExplain={() => loadExplain(shown.result.id)}
-                atlas={atlas} hoverRank={hoverRank} setHoverRank={setHoverRank} />
+                </div>
+                <RoomKey colours={ROOM_COLOURS} focus={focusRoom} setFocus={setFocusRoom} />
+                {atlas ? (
+                  <Atlas atlas={atlas} model={model} distances={null} matches={[]} uploadedUrl={null} hoverRank={null} setHoverRank={() => {}}
+                    initialMode="plans" tall focusRoom={focusRoom} colours={ROOM_COLOURS} label={`The 5,000 plans of CubiCasa5K, arranged by ${model}`} />
+                ) : (
+                  <div className="skeleton strip" />
+                )}
+                <p className="reading">
+                  Choose another network above and watch the plans move. Drag to look around, pinch or double-click to zoom,
+                  and pick a room type to see where it is across the whole collection.
+                </p>
+              </section>
             )}
           </>
         )}

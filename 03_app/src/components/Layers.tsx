@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { png, type Step } from "../api";
 
 const LABEL: Record<string, string> = {
@@ -30,8 +31,8 @@ function shapeText(step: Step) {
 export function Layers({ steps }: { steps: Step[] }) {
   return (
     <ol className="layers">
-      {steps.map((step) => (
-        <li key={step.tensor} className="layer" data-kind={step.tensor === "code" ? "code" : step.tiles?.length === 4 ? "channels" : "single"}>
+      {steps.map((step, index) => (
+        <li key={step.tensor} style={{ "--i": index } as CSSProperties} className="layer" data-kind={step.tensor === "code" ? "code" : step.tiles?.length === 4 ? "channels" : "single"}>
           <h4>{LABEL[step.tensor] ?? step.tensor}</h4>
           <p className="layer-meta">
             {step.ops.length > 0 && <span>{step.ops.map(opText).join(" + ")}</span>}
