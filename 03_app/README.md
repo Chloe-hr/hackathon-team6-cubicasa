@@ -2,7 +2,9 @@
 
 **Team 6 · Plan precedents: floor-plan similarity search**
 
-**Public URL:** `https://hackathon-team6-cubicasa-app.pages.dev` is the first version, on Cloudflare Pages. This version runs on Cloudflare Workers; its address appears after the first `npm run deploy`.
+**Public URL:** https://hackathon-team6-cubicasa-app.hackathon-team6-cubicasa-app.workers.dev
+
+The first version, on Cloudflare Pages, is still at `https://hackathon-team6-cubicasa-app.pages.dev`.
 
 **Log in:** the app asks for one team password. We give it to you in the course hand-in, **not** in this repository.
 
@@ -48,7 +50,7 @@ The two also share what they compute. As in class (deck 03, slide 28), the 128 n
 | **R2** | `uploads/<id>`: the uploaded plan · `results/<id>.json`: the answer of `/predict_model` · `explain/<id>.json`: the answer of `/explain_model` | Files and big answers don't belong in database rows; a past search reopens with everything while the model server sleeps |
 | **Secret `APP_PASSWORD`** | The team password | Kept by Cloudflare, never in the code or on GitHub |
 
-D1 and R2 are the same ones as in the first version, so the past searches are still there.
+This version has its own D1 database and R2 bucket, on Luca's Cloudflare account; the searches made with the first version stay with it.
 
 ## Endpoints (`worker/index.ts`)
 

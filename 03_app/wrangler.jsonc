@@ -15,7 +15,7 @@
   },
   // The database: one row per search (schema.sql)
   "d1_databases": [
-    { "binding": "DB", "database_name": "hackathon-team6-db", "database_id": "1cf4c5cf-6131-4ddd-aa39-353989640fdd" }
+    { "binding": "DB", "database_name": "hackathon-team6-db", "database_id": "e4e555dc-ffe7-4160-84e0-00f28183491a" }
   ],
   // File storage: the uploaded plans, the full answer of each search and its "look inside" answer
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "hackathon-team6-plans" }]

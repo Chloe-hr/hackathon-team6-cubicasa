@@ -22,7 +22,7 @@ All 5,000 plans placed on a map by their codes and drawn as their rooms. Our fir
 | Model on Hugging Face | https://huggingface.co/iaac-maai/hackathon-team6-cubicasa-ae | Monday |
 | Model server (Render) | https://hackathon-team6-cubicasa.onrender.com | Tuesday |
 | App, first version (Cloudflare Pages) | https://hackathon-team6-cubicasa-app.pages.dev | Wednesday |
-| App, React on Workers with Look inside | its address appears after the first deploy, see [`03_app/`](03_app/) | Wednesday |
+| App, React on Workers with Look inside | https://hackathon-team6-cubicasa-app.hackathon-team6-cubicasa-app.workers.dev | Wednesday |
 
 ## Repository
 
