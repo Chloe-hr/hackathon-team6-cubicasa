@@ -7,7 +7,6 @@ from pathlib import Path
 
 import gradio as gr
 import numpy as np
-import onnx
 import onnxruntime as ort
 from huggingface_hub import hf_hub_download
 from PIL import Image
@@ -209,6 +208,8 @@ def explain_session(key):
     # A second session of the same ONNX file that also returns the inner layers, made on first use
     model = MODELS[key]
     if "explain" not in model:
+        import onnx  # only here, so the server starts with the same memory as before (512 MB on Render's free plan)
+
         graph_proto = onnx.load(model["file"])
         weights = {i.name: int(np.prod(i.dims)) for i in graph_proto.graph.initializer
                    if i.data_type == onnx.TensorProto.FLOAT}
@@ -227,7 +228,9 @@ def explain_session(key):
             raise ValueError(f"Unexpected layers in {model['file']}")
         graph_proto.graph.output.extend(onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, None)
                                         for name in SHOWN if name != "code")
-        model["explain"] = (ort.InferenceSession(graph_proto.SerializeToString(), providers=["CPUExecutionProvider"]),
+        options = ort.SessionOptions()
+        options.enable_cpu_mem_arena = False   # no memory pool: Render's free plan has 512 MB for everything
+        model["explain"] = (ort.InferenceSession(graph_proto.SerializeToString(), options, providers=["CPUExecutionProvider"]),
                             steps, sum(weights.values()))
     return model["explain"]
 
