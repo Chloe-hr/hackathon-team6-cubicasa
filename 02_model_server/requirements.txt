@@ -1,6 +1,7 @@
 # The server needs no PyTorch: the ONNX file runs with ONNX Runtime (small enough for Render's 512 MB)
 gradio==6.32.0
 onnxruntime==1.31.1
+onnx==1.23.2        # only to read the layers of the ONNX file for /explain_model
 numpy==2.5.5
 pillow==13.0.0
 huggingface_hub==2.4.0

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import gradio as gr
 import numpy as np
+import onnx
 import onnxruntime as ort
 from huggingface_hub import hf_hub_download
 from PIL import Image
@@ -72,7 +73,7 @@ if code_probe.shape != (1, CODES.shape[1]) or room_probe.shape != (1, len(CLASSE
 # ---- The other versions of the model, so the app can let the user choose -------
 # Each version has its own ONNX file and its own codes of the 5,000 plans; the plans and room maps are shared.
 # v1 was trained on the plans as drawn (no cleaning), v2 and v3 on the cleaned plans.
-MODELS = {MODEL_VERSION: {"session": session, "codes": CODES, "atlas": ATLAS, "clean": True, "output": "rooms",
+MODELS = {MODEL_VERSION: {"file": graph, "session": session, "codes": CODES, "atlas": ATLAS, "clean": True, "output": "rooms",
                           "label": "v3 · rooms" if MODEL_VERSION == "v3" else MODEL_VERSION}}
 if not BUNDLE_DIR:
     for key, onnx_name, codes_name, atlas_name, clean, label in [
@@ -82,7 +83,8 @@ if not BUNDLE_DIR:
         extra_codes = np.load(model_file(codes_name))
         if extra_codes.shape != CODES.shape or not np.isfinite(extra_codes).all():
             raise ValueError(f"Invalid codes for {key}")
-        MODELS[key] = {"session": ort.InferenceSession(model_file(onnx_name), providers=["CPUExecutionProvider"]),
+        onnx_path = model_file(onnx_name)
+        MODELS[key] = {"file": onnx_path, "session": ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"]),
                        "codes": extra_codes, "atlas": np.load(model_file(atlas_name)) if atlas_name else None,
                        "clean": clean, "output": "reconstruction", "label": label}
 
@@ -197,6 +199,86 @@ def predict_model(image_b64: str, model: str = "v3") -> dict:
     }
 
 
+# ---- For the app's "Look inside": what every layer of the network computes for one plan ----
+# The tensors we show, in the order the plan goes through the network (same names in v1, v2 and v3)
+SHOWN = ["relu", "relu_1", "relu_2", "relu_3", "code", "relu_5", "relu_6", "relu_7"]
+TILES = 4   # the strongest channels shown per layer
+
+
+def explain_session(key):
+    # A second session of the same ONNX file that also returns the inner layers, made on first use
+    model = MODELS[key]
+    if "explain" not in model:
+        graph_proto = onnx.load(model["file"])
+        weights = {i.name: int(np.prod(i.dims)) for i in graph_proto.graph.initializer
+                   if i.data_type == onnx.TensorProto.FLOAT}
+        last = graph_proto.graph.output[1].name      # "rooms" for v3, "reconstruction" for v1 and v2
+        steps, ops, count_weights = [], [], 0
+        for node in graph_proto.graph.node:          # the graph is one chain, so walk it in order
+            attrs = {a.name: list(onnx.helper.get_attribute_value(a)) for a in node.attribute
+                     if a.name in ("kernel_shape", "strides")}
+            if node.op_type in ("Conv", "ConvTranspose", "Gemm"):
+                ops.append({"op": node.op_type, **attrs})
+            count_weights += sum(weights.get(name, 0) for name in node.input)
+            if node.output[0] in SHOWN + [last]:
+                steps.append({"tensor": node.output[0], "ops": ops, "weights": count_weights})
+                ops, count_weights = [], 0
+        if [s["tensor"] for s in steps] != SHOWN + [last]:
+            raise ValueError(f"Unexpected layers in {model['file']}")
+        graph_proto.graph.output.extend(onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, None)
+                                        for name in SHOWN if name != "code")
+        model["explain"] = (ort.InferenceSession(graph_proto.SerializeToString(), providers=["CPUExecutionProvider"]),
+                            steps, sum(weights.values()))
+    return model["explain"]
+
+
+def channel_tiles(tensor):
+    # The 4 channels with the highest mean activation; dark = strong, scaled by the layer's maximum
+    peak = float(tensor.max()) or 1.0
+    strongest = np.argsort(-tensor.mean(axis=(1, 2)), kind="stable")[:TILES]
+    return [{"channel": int(c), "png": png_base64(Image.fromarray(255 - (np.clip(tensor[c] / peak, 0, 1) * 255).astype(np.uint8)))}
+            for c in strongest]
+
+
+def explain_model(image_b64: str, model: str = "v3") -> dict:
+    """What the network computes for one plan: the four strongest channels of every layer, the 128-number code, the output, and the distance to each of the 5,000 plans (in the order of the collection)."""
+    if model not in MODELS:
+        raise gr.Error(f"Unknown model {model!r}. Choose one of: {', '.join(sorted(MODELS))}.")
+    session_x, steps, total_weights = explain_session(model)
+    drawing = drawing_array(read_image(image_b64), SIZE)
+    plan = clean_plan(drawing) if MODELS[model]["clean"] else drawing
+    x = (plan.astype(np.float32) / 255.0)[None, None]
+    names = [o.name for o in session_x.get_outputs()]
+    values = dict(zip(names, session_x.run(None, {"image": x})))
+    code, last = values["code"][0], values[steps[-1]["tensor"]][0]
+
+    out = [{"tensor": "image", "ops": [], "weights": 0, "shape": [1, SIZE, SIZE],
+            "tiles": [{"name": "the plan the network reads", "png": png_base64(to_image(x[0, 0]))}]}]
+    for step in steps[:-1]:
+        tensor = values[step["tensor"]][0]
+        entry = {**step, "shape": list(tensor.shape)}
+        if step["tensor"] == "code":
+            entry["values"] = [round(float(v), 3) for v in tensor]
+        else:
+            entry["tiles"] = channel_tiles(tensor)
+        out.append(entry)
+    if MODELS[model]["output"] == "rooms":
+        rooms = last[:len(CLASSES)]
+        probabilities = np.exp(rooms - rooms.max(axis=0))
+        probabilities /= probabilities.sum(axis=0)
+        walls = 1 / (1 + np.exp(-last[len(CLASSES)]))
+        tiles = [{"name": "rooms", "png": png_base64(rooms_image(rooms.argmax(axis=0)))},
+                 {"name": "walls", "png": png_base64(to_image(walls))},
+                 {"name": "how sure", "png": png_base64(to_image(probabilities.max(axis=0)))}]
+    else:
+        tiles = [{"name": "the plan redrawn", "png": png_base64(to_image(last[0]))}]
+    out.append({**steps[-1], "shape": list(last.shape), "tiles": tiles})
+
+    distances = np.linalg.norm(MODELS[model]["codes"] - code, axis=1)
+    return {"model_version": model, "total_weights": total_weights, "steps": out,
+            "distances": [round(float(d), 1) for d in distances]}
+
+
 legend = " ".join(f"<span style='background:{c};padding:1px 6px;margin-right:4px'>&nbsp;</span>{name}"
                   for name, c in zip(CLASSES[1:], CONFIG["room_colours"][1:]))
 
@@ -224,6 +306,7 @@ with gr.Blocks(title="Floor-plan similarity search") as demo:
     gr.api(predict, api_name="predict")
     gr.api(embed, api_name="embed")
     gr.api(predict_model, api_name="predict_model")
+    gr.api(explain_model, api_name="explain_model")
 
 if __name__ == "__main__":
     # Render tells the app which port to use in the PORT variable; locally it is 7860

@@ -16,16 +16,18 @@ Generate the bundle first by following the [aligned model workflow](../01_autoen
 
 ## API
 
-Both endpoints accept a base64 PNG or JPEG, optionally with a data URI prefix. Both return the active model_version. Compare only embeddings from the same encoder release.
+All endpoints accept a base64 PNG or JPEG, optionally with a data URI prefix. All return the model_version they used. Compare only embeddings from the same encoder release.
 
 | Endpoint | Response |
 | --- | --- |
 | `/embed` | `code` is a list of 128 numbers and `size` is 128. |
 | `/predict` | `matches` contains five ranked entries. Query `atlas_xy` is their mean position; query `rooms_png_base64` is a prediction. `room_colours` maps room labels to colours. |
+| `/predict_model` | Like `/predict`, with a second input: the network, `"v1"`, `"v2"` or `"v3"`. `query_png_base64` is the v3 room prediction or the v1 and v2 reconstruction, `query_kind` says which. The app uses this one. |
+| `/explain_model` | Same two inputs. `steps` lists every layer in order with its shape, its weights read from the ONNX file and the four most active channels as PNGs; the code step has its 128 `values`. `distances` holds the distance to each of the 5,000 plans, in collection order. The app's Look inside view uses it. |
 
 Each match contains `rank`, `id`, `distance`, `atlas_xy` and `image_png_base64`. `has_rooms` records whether the gallery annotation is available. `rooms_png_base64` contains the annotated gallery map or JSON null.
 
-Use `gradio_client.Client(url).predict(image_b64, api_name="/predict")` or `api_name="/embed"`. For plain HTTP, post `{"data": ["<base64 image>"]}` to `/gradio_api/call/predict` or `/gradio_api/call/embed`, then fetch the same endpoint with `/<event_id>` appended. The completed event contains the result.
+Use `gradio_client.Client(url).predict(image_b64, api_name="/predict")` or `api_name="/embed"`; `/predict_model` and `/explain_model` take the network as a second argument. For plain HTTP, post `{"data": ["<base64 image>"]}` to `/gradio_api/call/predict` or `/gradio_api/call/embed`, then fetch the same endpoint with `/<event_id>` appended. The completed event contains the result.
 
 ## Render configuration
 
